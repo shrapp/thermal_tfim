@@ -243,11 +243,11 @@ def calc_kink_probabilities(pks, d_vals):
 #             df.to_csv('data.csv', index=False)
             
             
-def calc_noisy_data(Ns, taus, noises):
+def calc_data(Ns, taus, noises):
     processes = []
     lock = Lock()
     for N, tau, noise in [(N, tau, noise) for N in Ns for tau in taus for noise in noises]:
-        p = Process(target=calc_noisy_data_single, args=(N, tau, lock, noise))
+        p = Process(target=calc_data_single, args=(N, tau, lock, noise))
         p.start()
         processes.append(p)
 
@@ -255,7 +255,7 @@ def calc_noisy_data(Ns, taus, noises):
         p.join()
         
 
-def calc_noisy_data_single(N, tau, lock, noise):
+def calc_data_single(N, tau, lock, noise):
     os.nice(1) # type: ignore
     tau = round(tau, 6)
     w = round(noise, 6)
@@ -319,6 +319,22 @@ def calc_noisy_data_single(N, tau, lock, noise):
             with lock:
                 df = pd.read_csv('data.csv')
                 df = pd.concat([df, therm_data_df])
+                df = df.sort_values(['N', 'tau', 'noise'])
+                df.to_csv('data.csv', index=False)
+                
+        if w==0 and spesific_df[spesific_df['type'] == 'analytic'].empty:
+            analytic_probability_mass_function = pk_analitic(ks, tau)
+            analytic_probability_mass_function = np.where(analytic_probability_mass_function < epsilon, 0, analytic_probability_mass_function)
+            analytic_mask = (np.roll(analytic_probability_mass_function, 0) == 0) & (np.roll(analytic_probability_mass_function, -2) == 0)
+            analytic_mask[-1] = False
+            analytic_mask[-2] = False
+            analytic_probability_mass_function[np.roll(analytic_mask, 1)] = 0
+            analytic_cumulants = calculate_cumulants(analytic_probability_mass_function, d_vals)
+            
+            analytic_data_df = pd.DataFrame({**analytic_cumulants, 'probability': [analytic_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['analytic'], 'noise': [w]})
+            with lock:
+                df = pd.read_csv('data.csv')
+                df = pd.concat([df, analytic_data_df])
                 df = df.sort_values(['N', 'tau', 'noise'])
                 df.to_csv('data.csv', index=False)
 
