@@ -1,22 +1,23 @@
-import sympy as smp
-import numpy as np
-import matplotlib.pyplot as plt
-import time
-import os
-import datetime
-from scipy.integrate import quad, solve_ivp
-from tqdm import tqdm
-from scipy.optimize import curve_fit
-from scipy.special import factorial, logsumexp, gammaln
-import json
-from scipy.interpolate import interp1d
-import pandas as pd
 import ast
-import tempfile
-import shutil
+import datetime
+import json
 import math
-from multiprocessing import Pool, Process, Lock
+import os
+import shutil
+import tempfile
+import time
+from multiprocessing import Lock, Pool, Process
+
 import matplotlib.cm as cm
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import sympy as smp
+from scipy.integrate import quad, solve_ivp
+from scipy.interpolate import interp1d
+from scipy.optimize import curve_fit
+from scipy.special import factorial, gammaln, logsumexp
+from tqdm import tqdm
 
 # Parameters
 hbar = 1.0   # in natural units
@@ -155,91 +156,91 @@ def calc_kink_probabilities(pks, d_vals):
     
 
 
-def calc_data(Ns, taus):
-    processes = []
-    lock = Lock()
-    for N, tau in [(N, tau) for N in Ns for tau in taus]:
-        p = Process(target=calc_data_single, args=(N, tau, lock))
-        p.start()
-        processes.append(p)
+# def calc_data(Ns, taus):
+#     processes = []
+#     lock = Lock()
+#     for N, tau in [(N, tau) for N in Ns for tau in taus]:
+#         p = Process(target=calc_data_single, args=(N, tau, lock))
+#         p.start()
+#         processes.append(p)
 
-    for p in processes:
-        p.join()
+#     for p in processes:
+#         p.join()
         
 
-def calc_data_single(N, tau, lock):
-    os.nice(1) # type: ignore
-    tau = round(tau, 6)
+# def calc_data_single(N, tau, lock):
+#     os.nice(1) # type: ignore
+#     tau = round(tau, 6)
 
-    # Load data from file if it exists, or create an empty DataFrame
-    try:
-        df = pd.read_csv('data.csv')
-        df = df.sort_values(['N', 'tau'])
-    except FileNotFoundError:
-        df = pd.DataFrame(columns=['N', 'tau', 'type', 'probability', 'mean', 
-                                'second_moment', 'third_moment', 'fourth_moment',
-                                'variance', 'skewness', 'kurtosis'])
+#     # Load data from file if it exists, or create an empty DataFrame
+#     try:
+#         df = pd.read_csv('data.csv')
+#         df = df.sort_values(['N', 'tau'])
+#     except FileNotFoundError:
+#         df = pd.DataFrame(columns=['N', 'tau', 'type', 'probability', 'mean', 
+#                                 'second_moment', 'third_moment', 'fourth_moment',
+#                                 'variance', 'skewness', 'kurtosis'])
 
-    # Check if data[N][tau] is in DataFrame
-    if not df.empty and not df[(df['N'] == N) & (df['tau'] == tau)].empty:
-        pass
+#     # Check if data[N][tau] is in DataFrame
+#     if not df.empty and not df[(df['N'] == N) & (df['tau'] == tau)].empty:
+#         pass
 
 
-    # Calculate and save to file
-    else:
-        # Calculate probabilities
-        ks = k_f(np.arange(0, N/2), N)
-        pks_analytic = p_k_analytic(tau, ks)
-        pks_numric = calc_pk(ks, tau)
-        d_vals = np.arange(0,N+1,2)
+#     # Calculate and save to file
+#     else:
+#         # Calculate probabilities
+#         ks = k_f(np.arange(0, N/2), N)
+#         pks_analytic = p_k_analytic(tau, ks)
+#         pks_numric = calc_pk(ks, tau)
+#         d_vals = np.arange(0,N+1,2)
         
-        num_probability_mass_function = calc_kink_probabilities(pks_numric, d_vals)
-        num_probability_mass_function = np.where(num_probability_mass_function < epsilon, 0, num_probability_mass_function)
-        num_mask = (np.roll(num_probability_mass_function, 0) == 0) & (np.roll(num_probability_mass_function, -2) == 0)
-        num_mask[-1] = False
-        num_mask[-2] = False
-        num_probability_mass_function[np.roll(num_mask, 1)] = 0
+#         num_probability_mass_function = calc_kink_probabilities(pks_numric, d_vals)
+#         num_probability_mass_function = np.where(num_probability_mass_function < epsilon, 0, num_probability_mass_function)
+#         num_mask = (np.roll(num_probability_mass_function, 0) == 0) & (np.roll(num_probability_mass_function, -2) == 0)
+#         num_mask[-1] = False
+#         num_mask[-2] = False
+#         num_probability_mass_function[np.roll(num_mask, 1)] = 0
 
-        analytic_probability_mass_function = calc_kink_probabilities(pks_analytic, d_vals)
-        analytic_probability_mass_function = np.where(analytic_probability_mass_function < epsilon, 0, analytic_probability_mass_function)
-        analytic_mask = (np.roll(analytic_probability_mass_function, 0) == 0) & (np.roll(analytic_probability_mass_function, -2) == 0)
-        analytic_mask[-1] = False
-        analytic_mask[-2] = False
-        analytic_probability_mass_function[np.roll(analytic_mask, 1)] = 0
+#         analytic_probability_mass_function = calc_kink_probabilities(pks_analytic, d_vals)
+#         analytic_probability_mass_function = np.where(analytic_probability_mass_function < epsilon, 0, analytic_probability_mass_function)
+#         analytic_mask = (np.roll(analytic_probability_mass_function, 0) == 0) & (np.roll(analytic_probability_mass_function, -2) == 0)
+#         analytic_mask[-1] = False
+#         analytic_mask[-2] = False
+#         analytic_probability_mass_function[np.roll(analytic_mask, 1)] = 0
 
 
-        d_num = D_func(num_probability_mass_function)
-        therm_probability_mass_function = thermal_prob(d_num, N)
-        therm_probability_mass_function = np.where(therm_probability_mass_function < epsilon, 0, therm_probability_mass_function)
-        therm_mask = (np.roll(therm_probability_mass_function, 0) == 0) & (np.roll(therm_probability_mass_function, -2) == 0)
-        therm_mask[-1] = False
-        therm_mask[-2] = False
-        therm_probability_mass_function[np.roll(therm_mask, 1)] = 0
+#         d_num = D_func(num_probability_mass_function)
+#         therm_probability_mass_function = thermal_prob(d_num, N)
+#         therm_probability_mass_function = np.where(therm_probability_mass_function < epsilon, 0, therm_probability_mass_function)
+#         therm_mask = (np.roll(therm_probability_mass_function, 0) == 0) & (np.roll(therm_probability_mass_function, -2) == 0)
+#         therm_mask[-1] = False
+#         therm_mask[-2] = False
+#         therm_probability_mass_function[np.roll(therm_mask, 1)] = 0
 
-        # Calculate cumulants
-        num_cumulants = calculate_cumulants(num_probability_mass_function, d_vals)
-        analytic_cumulants = calculate_cumulants(analytic_probability_mass_function, d_vals)
-        therm_cumulants = calculate_cumulants(therm_probability_mass_function, d_vals)
+#         # Calculate cumulants
+#         num_cumulants = calculate_cumulants(num_probability_mass_function, d_vals)
+#         analytic_cumulants = calculate_cumulants(analytic_probability_mass_function, d_vals)
+#         therm_cumulants = calculate_cumulants(therm_probability_mass_function, d_vals)
 
-        # Prepare data for DataFrame
-        pk_data_df = pd.DataFrame({'probability': [pks_numric.tolist()], 'N': [N], 'tau': [tau], 'type': ['pk']})
-        num_data_df = pd.DataFrame({**num_cumulants, 'probability': [num_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['numeric']})
-        therm_data_df = pd.DataFrame({**therm_cumulants, 'probability': [therm_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['thermal']})
-        analytic_data_df = pd.DataFrame({**analytic_cumulants, 'probability': [analytic_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['analytic']})
+#         # Prepare data for DataFrame
+#         pk_data_df = pd.DataFrame({'probability': [pks_numric.tolist()], 'N': [N], 'tau': [tau], 'type': ['pk']})
+#         num_data_df = pd.DataFrame({**num_cumulants, 'probability': [num_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['numeric']})
+#         therm_data_df = pd.DataFrame({**therm_cumulants, 'probability': [therm_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['thermal']})
+#         analytic_data_df = pd.DataFrame({**analytic_cumulants, 'probability': [analytic_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['analytic']})
 
         
-        with lock:
-        # Load data from file if it exists, or create an empty DataFrame
-            try:
-                df = pd.read_csv('data.csv')
-                df = df.sort_values(['N', 'tau'])
-            except FileNotFoundError:
-                df = pd.DataFrame(columns=['N', 'tau', 'type', 'probability', 'mean', 
-                                        'second_moment', 'third_moment', 'fourth_moment',
-                                        'variance', 'skewness', 'kurtosis'])
-            # Concatenate the DataFrames
-            df = pd.concat([df, pk_data_df, num_data_df, analytic_data_df, therm_data_df])
-            df.to_csv('data.csv', index=False)
+#         with lock:
+#         # Load data from file if it exists, or create an empty DataFrame
+#             try:
+#                 df = pd.read_csv('data.csv')
+#                 df = df.sort_values(['N', 'tau'])
+#             except FileNotFoundError:
+#                 df = pd.DataFrame(columns=['N', 'tau', 'type', 'probability', 'mean', 
+#                                         'second_moment', 'third_moment', 'fourth_moment',
+#                                         'variance', 'skewness', 'kurtosis'])
+#             # Concatenate the DataFrames
+#             df = pd.concat([df, pk_data_df, num_data_df, analytic_data_df, therm_data_df])
+#             df.to_csv('data.csv', index=False)
             
             
 def calc_noisy_data(Ns, taus, noises):
@@ -254,18 +255,21 @@ def calc_noisy_data(Ns, taus, noises):
         p.join()
         
 
-def calc_noisy_data_single(N, tau, lock, w):
+def calc_noisy_data_single(N, tau, lock, noise):
     os.nice(1) # type: ignore
     tau = round(tau, 6)
+    w = round(noise, 6)
+    
 
-    # Load data from file if it exists, or create an empty DataFrame
-    try:
-        df = pd.read_csv('data.csv')
-        df = df.sort_values(['N', 'tau', 'noise'])
-    except FileNotFoundError:
-        df = pd.DataFrame(columns=['N', 'tau', 'type', 'noise','probability', 'mean', 
-                                'second_moment', 'third_moment', 'fourth_moment',
-                                'variance', 'skewness', 'kurtosis'])
+    with lock:
+        # Load data from file if it exists, or create an empty DataFrame
+        try:
+            df = pd.read_csv('data.csv')
+            df = df.sort_values(['N', 'tau', 'noise'])
+        except FileNotFoundError:
+            df = pd.DataFrame(columns=['N', 'tau', 'type', 'noise','probability', 'mean', 
+                                    'second_moment', 'third_moment', 'fourth_moment',
+                                    'variance', 'skewness', 'kurtosis'])
 
     # Check if data[N][tau][w] is in DataFrame
     if (not df.empty) and (not df[(df['N'] == N) & (df['tau'] == tau) & (df['noise'] == w)].empty):
@@ -276,10 +280,12 @@ def calc_noisy_data_single(N, tau, lock, w):
             pks_numeric = calk_noisy_pk(ks, tau, w)
             pk_data_df = pd.DataFrame({'probability': [pks_numeric.tolist()], 'N': [N], 'tau': [tau], 'type': ['pk'], 'noise': [w]})
             with lock:
+                df = pd.read_csv('data.csv')
                 df = pd.concat([df, pk_data_df])
+                df = df.sort_values(['N', 'tau', 'noise'])
                 df.to_csv('data.csv', index=False)
         else: 
-            pks_numeric = np.array(spesific_df[spesific_df['type'] == 'pk']['probability'].values[0])
+            pks_numeric = np.array(ast.literal_eval(spesific_df[spesific_df['type'] == 'pk']['probability'].iloc[0])).flatten()
         
         if spesific_df[spesific_df['type'] == 'numeric'].empty:
             num_probability_mass_function = calc_kink_probabilities(pks_numeric, d_vals)
@@ -289,12 +295,15 @@ def calc_noisy_data_single(N, tau, lock, w):
             num_mask[-2] = False
             num_probability_mass_function[np.roll(num_mask, 1)] = 0
             num_cumulants = calculate_cumulants(num_probability_mass_function, d_vals)
+            
+            num_data_df = pd.DataFrame({**num_cumulants, 'probability': [num_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['numeric'], 'noise': [w]})
             with lock:
-                num_data_df = pd.DataFrame({**num_cumulants, 'probability': [num_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['numeric'], 'noise': [w]})
+                df = pd.read_csv('data.csv')
                 df = pd.concat([df, num_data_df])
+                df = df.sort_values(['N', 'tau', 'noise'])
                 df.to_csv('data.csv', index=False)
         else:
-            num_probability_mass_function = np.array(spesific_df[spesific_df['type'] == 'numeric']['probability'].values[0])
+            num_probability_mass_function = np.array(ast.literal_eval(spesific_df[spesific_df['type'] == 'numeric']['probability'].iloc[0])).flatten()
             
         if spesific_df[spesific_df['type'] == 'thermal'].empty:
             d_num = D_func(num_probability_mass_function)
@@ -305,9 +314,12 @@ def calc_noisy_data_single(N, tau, lock, w):
             therm_mask[-2] = False
             therm_probability_mass_function[np.roll(therm_mask, 1)] = 0
             therm_cumulants = calculate_cumulants(therm_probability_mass_function, d_vals)
+            
+            therm_data_df = pd.DataFrame({**therm_cumulants, 'probability': [therm_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['thermal'], 'noise': [w]})
             with lock:
-                therm_data_df = pd.DataFrame({**therm_cumulants, 'probability': [therm_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['thermal'], 'noise': [w]})
+                df = pd.read_csv('data.csv')
                 df = pd.concat([df, therm_data_df])
+                df = df.sort_values(['N', 'tau', 'noise'])
                 df.to_csv('data.csv', index=False)
 
 
