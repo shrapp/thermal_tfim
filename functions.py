@@ -1,23 +1,11 @@
 import ast
-import datetime
-import json
-import math
 import os
-import shutil
-import tempfile
-import time
 from multiprocessing import Lock, Pool, Process
 
-import matplotlib.cm as cm
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import sympy as smp
 from scipy.integrate import quad, solve_ivp
-from scipy.interpolate import interp1d
-from scipy.optimize import curve_fit
-from scipy.special import factorial, gammaln, logsumexp
-from tqdm import tqdm
+from scipy.special import gammaln, logsumexp
 
 # Parameters
 hbar = 1.0   # in natural units
@@ -154,95 +142,7 @@ def calc_kink_probabilities(pks, d_vals):
     with Pool() as pool:
         return np.array(pool.starmap(P_func, [(pks, d) for d in d_vals]))
     
-
-
-# def calc_data(Ns, taus):
-#     processes = []
-#     lock = Lock()
-#     for N, tau in [(N, tau) for N in Ns for tau in taus]:
-#         p = Process(target=calc_data_single, args=(N, tau, lock))
-#         p.start()
-#         processes.append(p)
-
-#     for p in processes:
-#         p.join()
-        
-
-# def calc_data_single(N, tau, lock):
-#     os.nice(1) # type: ignore
-#     tau = round(tau, 6)
-
-#     # Load data from file if it exists, or create an empty DataFrame
-#     try:
-#         df = pd.read_csv('data.csv')
-#         df = df.sort_values(['N', 'tau'])
-#     except FileNotFoundError:
-#         df = pd.DataFrame(columns=['N', 'tau', 'type', 'probability', 'mean', 
-#                                 'second_moment', 'third_moment', 'fourth_moment',
-#                                 'variance', 'skewness', 'kurtosis'])
-
-#     # Check if data[N][tau] is in DataFrame
-#     if not df.empty and not df[(df['N'] == N) & (df['tau'] == tau)].empty:
-#         pass
-
-
-#     # Calculate and save to file
-#     else:
-#         # Calculate probabilities
-#         ks = k_f(np.arange(0, N/2), N)
-#         pks_analytic = p_k_analytic(tau, ks)
-#         pks_numric = calc_pk(ks, tau)
-#         d_vals = np.arange(0,N+1,2)
-        
-#         num_probability_mass_function = calc_kink_probabilities(pks_numric, d_vals)
-#         num_probability_mass_function = np.where(num_probability_mass_function < epsilon, 0, num_probability_mass_function)
-#         num_mask = (np.roll(num_probability_mass_function, 0) == 0) & (np.roll(num_probability_mass_function, -2) == 0)
-#         num_mask[-1] = False
-#         num_mask[-2] = False
-#         num_probability_mass_function[np.roll(num_mask, 1)] = 0
-
-#         analytic_probability_mass_function = calc_kink_probabilities(pks_analytic, d_vals)
-#         analytic_probability_mass_function = np.where(analytic_probability_mass_function < epsilon, 0, analytic_probability_mass_function)
-#         analytic_mask = (np.roll(analytic_probability_mass_function, 0) == 0) & (np.roll(analytic_probability_mass_function, -2) == 0)
-#         analytic_mask[-1] = False
-#         analytic_mask[-2] = False
-#         analytic_probability_mass_function[np.roll(analytic_mask, 1)] = 0
-
-
-#         d_num = D_func(num_probability_mass_function)
-#         therm_probability_mass_function = thermal_prob(d_num, N)
-#         therm_probability_mass_function = np.where(therm_probability_mass_function < epsilon, 0, therm_probability_mass_function)
-#         therm_mask = (np.roll(therm_probability_mass_function, 0) == 0) & (np.roll(therm_probability_mass_function, -2) == 0)
-#         therm_mask[-1] = False
-#         therm_mask[-2] = False
-#         therm_probability_mass_function[np.roll(therm_mask, 1)] = 0
-
-#         # Calculate cumulants
-#         num_cumulants = calculate_cumulants(num_probability_mass_function, d_vals)
-#         analytic_cumulants = calculate_cumulants(analytic_probability_mass_function, d_vals)
-#         therm_cumulants = calculate_cumulants(therm_probability_mass_function, d_vals)
-
-#         # Prepare data for DataFrame
-#         pk_data_df = pd.DataFrame({'probability': [pks_numric.tolist()], 'N': [N], 'tau': [tau], 'type': ['pk']})
-#         num_data_df = pd.DataFrame({**num_cumulants, 'probability': [num_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['numeric']})
-#         therm_data_df = pd.DataFrame({**therm_cumulants, 'probability': [therm_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['thermal']})
-#         analytic_data_df = pd.DataFrame({**analytic_cumulants, 'probability': [analytic_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['analytic']})
-
-        
-#         with lock:
-#         # Load data from file if it exists, or create an empty DataFrame
-#             try:
-#                 df = pd.read_csv('data.csv')
-#                 df = df.sort_values(['N', 'tau'])
-#             except FileNotFoundError:
-#                 df = pd.DataFrame(columns=['N', 'tau', 'type', 'probability', 'mean', 
-#                                         'second_moment', 'third_moment', 'fourth_moment',
-#                                         'variance', 'skewness', 'kurtosis'])
-#             # Concatenate the DataFrames
-#             df = pd.concat([df, pk_data_df, num_data_df, analytic_data_df, therm_data_df])
-#             df.to_csv('data.csv', index=False)
-            
-            
+             
 def calc_data(Ns, taus, noises):
     processes = []
     lock = Lock()
@@ -339,117 +239,16 @@ def calc_data_single(N, tau, lock, noise):
                 df.to_csv('data.csv', index=False)
 
 
-def plot_time_ev(psi_t, t_max):
-    # Prepare a time array
-    time_array = np.linspace(0,t_max, psi_t.shape[0])
-
-    # Calculate the absolute squares of the components
-    probabilities = np.abs(psi_t)**2
-
-    # Plot the probabilities for each state as a function of time
-    plt.figure(figsize=(10,6))
-    plt.plot(time_array, probabilities[:,0], label="State 0")
-    plt.plot(time_array, probabilities[:,1], label="State 1")
-    plt.legend()
-    plt.xlabel("Time")
-    plt.ylabel("Probability")
-    plt.title("Time evolution of a two-level system")
-    plt.grid(True)
-    plt.show()
-
-
-
 def pk_analitic(k_values, tau):
-    return np.array([np.exp(-np.pi*tau*(k)/2)*(np.cos(k/2)**2) for k in k_values])
+    return np.array([np.exp(-2*np.pi*tau*(k**2))*(np.cos(k/2)**2) for k in k_values])
 
 
-
-def plot_cumulant21_ratio(Ns, tau_min, tau_max, save=False, log=True):
-    plt.figure(figsize=(16, 9))
-
-    colors = cm.rainbow(np.linspace(0, 1, len(Ns)*3))
-
-    # Iterate over Ns
-    for idx, N in enumerate(Ns):
-        # Get the data in the tau range for the current N
-        data = get_data_in_tau_range(N, tau_min, tau_max)
-        
-        # Split the data into numeric and thermal
-        num_data = data[data['type'] == 'numeric']
-        therm_data = data[data['type'] == 'thermal']
-        analytic_data = data[data['type'] == 'analytic']
-
-        # Calculate the ratio of the second cumulant to the first (variance/mean) for numeric and thermal data
-        num_ratio = num_data['variance'] / num_data['mean']
-        therm_ratio = therm_data['variance'] / therm_data['mean']
-        analytic_ratio = analytic_data['variance'] / analytic_data['mean']
-
-        # Plot both numeric and thermal data with different colors and labels
-        
-        plt.plot(therm_data['tau'], therm_ratio, color=colors[idx], label=f'Thermal N={N}', marker='s', linewidth=0.1, markersize=6)
-        # plt.plot(analytic_data['tau'], analytic_ratio, color=colors[idx+1], label=f'Analytic N={N}', marker='o', linewidth=0.1, markersize=6)
-        plt.plot(num_data['tau'], num_ratio, color=colors[idx+2], label=f'Numeric N={N}', marker='^', linewidth=0.1, markersize=6)
-
-    # taus = np.logspace(-3, -2, 5)
-    # plt.plot(taus, np.full(len(taus),0.5), label='Theoretical Variance/Mean = 0.5', color='black', linewidth=1)
-    taus = np.logspace(1, 2, 5)
-    plt.plot(taus, np.full(len(taus),((2-np.sqrt(2)))), label='Theoretical Numeric Variance/Mean = 2-2^0.5', color='black', linewidth=1)
-    # taus = np.logspace(0.5, 1.5, 30)
-    # plt.plot(taus, 1-1/(2*np.pi)*((2*taus)**(-0.5)), label='Theoretical Thermal Variance/Mean = 1-(1/2pi)*(2tau)^0.5', color='black', linewidth=1)
-    # taus = np.logspace(2.5, 3, 5)
-    # plt.plot(taus, np.full(len(taus),2), label='Theoretical Variance/Mean = 2', color='black', linewidth=1)
-
-    # Set labels, title, and legend
-    plt.xlabel('Tau')
-    plt.ylabel('Variance/Mean')
-    plt.title('Ratio of Variance to Mean vs Tau')
-
-    # Place the legend outside of the plot
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-
-    plt.xscale('log')
-    if log:
-        plt.yscale('log')
-
-    # Display the plot
-    plt.tight_layout()
-    if save:
-        plt.savefig(f'variance_mean_ratio_N_{Ns}.svg')
-    plt.show()
-
-def get_data_in_tau_range(N, tau_min, tau_max):
+def get_data_in_range(N, float:tau_min, float:tau_max, float:noise_min=0, float:noise_max=0):
     # Load the DataFrame
     df = pd.read_csv('data.csv')
-    df = df.sort_values(['N', 'tau'])
+    df = df.sort_values(['N', 'tau', 'noise'])
 
-    
     # Apply the conditions and get the corresponding data
-    result = df[(df['N'] == N) & (df['tau'] > tau_min) & (df['tau'] < tau_max)]
-    result = result.sort_values(['tau'])
-    
-    return result
+    return df[(df['N'] == N) & (df['tau'] >= tau_min) & (df['tau'] <= tau_max) & (df['noise'] >= noise_min) & (df['noise'] <= noise_max)]
 
-def plot_probabilities(N, taus, range=None, save=False):
-    plt.figure(figsize=(12, 6))
-    d_vals = np.arange(0,N+1,2)
-    for tau in taus:
-        data = calc_data(N, tau)
-        numeric = np.array(data['numeric']['probability'].tolist()).flatten()
-        thermal = np.array(data['thermal']['probability'].tolist()).flatten()
-        analytic = np.array(data['analytic']['probability'].tolist()).flatten()
-        if range is not None:
-            plt.plot(d_vals[:range], numeric[:range], label=f'Numeric, tau = {tau}')
-            plt.plot(d_vals[:range], thermal[:range], label=f'Thermal, tau = {tau}')
-            plt.plot(d_vals[:range], analytic[:range], label=f'Analytic, tau = {tau}')
-        else:
-            plt.plot(d_vals, analytic, label=f'Analytic, tau = {tau}')
-            plt.plot(d_vals, thermal, label=f'Thermal, tau = {tau}')
-            plt.plot(d_vals, numeric, label=f'Numeric, tau = {tau}')
-    plt.xlabel('kinks')
-    plt.ylabel('Probability')
-    plt.title(f'Kinks probability distribution for N = {N} spins system')
-    plt.legend()
-    if save:
-        plt.savefig(f'Kinks probability distribution for N = {N} and tau = {taus}.svg')
-    plt.show()
 
