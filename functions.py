@@ -10,6 +10,7 @@ from scipy.special import gammaln, logsumexp
 # Parameters
 hbar = 1.0   # in natural units
 epsilon = 1e-8
+data_file = 'data.csv'
 
 def g(t, tau, t_max):
     return (t_max-t)/tau if tau > 0 else t_max
@@ -154,6 +155,24 @@ def calc_data(Ns, taus, noises):
     for p in processes:
         p.join()
         
+        
+def calculate_pk(N, tau, noise):
+    ks = k_f(np.arange(0, N/2), N)
+    pks_numeric = calk_noisy_pk(ks, tau, noise)
+    return {'probability': pks_numeric.tolist()}
+
+def calculate_numeric(N, tau, noise):
+    ks = k_f(np.arange(0, N/2), N)
+    pks_numeric = calk_noisy_pk(ks, tau, noise)
+    d_vals = np.arange(0,N+1,2)
+    num_probability_mass_function = calc_kink_probabilities(pks_numeric, d_vals)
+    num_probability_mass_function = np.where(num_probability_mass_function < epsilon, 0, num_probability_mass_function)
+    num_mask = (np.roll(num_probability_mass_function, 0) == 0) & (np.roll(num_probability_mass_function, -2) == 0)
+    num_mask[-1] = False
+    num_mask[-2] = False
+    num_probability_mass_function[np.roll(num_mask, 1)] = 0
+    num_cumulants = calculate_cumulants(num_probability_mass_function, d_vals)
+    return {**num_cumulants, 'probability': num_probability_mass_function.tolist()}
 
 def calc_data_single(N, tau, lock, noise):
     os.nice(1) # type: ignore
@@ -164,7 +183,7 @@ def calc_data_single(N, tau, lock, noise):
     with lock:
         # Load data from file if it exists, or create an empty DataFrame
         try:
-            df = pd.read_csv('data.csv')
+            df = pd.read_csv(data_file)
             df = df.sort_values(['N', 'tau', 'noise'])
         except FileNotFoundError:
             df = pd.DataFrame(columns=['N', 'tau', 'type', 'noise','probability', 'mean', 
@@ -180,10 +199,10 @@ def calc_data_single(N, tau, lock, noise):
             pks_numeric = calk_noisy_pk(ks, tau, w)
             pk_data_df = pd.DataFrame({'probability': [pks_numeric.tolist()], 'N': [N], 'tau': [tau], 'type': ['pk'], 'noise': [w]})
             with lock:
-                df = pd.read_csv('data.csv')
+                df = pd.read_csv(data_file)
                 df = pd.concat([df, pk_data_df])
                 df = df.sort_values(['N', 'tau', 'noise'])
-                df.to_csv('data.csv', index=False)
+                df.to_csv(data_file, index=False)
         else: 
             pks_numeric = np.array(ast.literal_eval(spesific_df[spesific_df['type'] == 'pk']['probability'].iloc[0])).flatten()
         
@@ -198,10 +217,10 @@ def calc_data_single(N, tau, lock, noise):
             
             num_data_df = pd.DataFrame({**num_cumulants, 'probability': [num_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['numeric'], 'noise': [w]})
             with lock:
-                df = pd.read_csv('data.csv')
+                df = pd.read_csv(data_file)
                 df = pd.concat([df, num_data_df])
                 df = df.sort_values(['N', 'tau', 'noise'])
-                df.to_csv('data.csv', index=False)
+                df.to_csv(data_file, index=False)
         else:
             num_probability_mass_function = np.array(ast.literal_eval(spesific_df[spesific_df['type'] == 'numeric']['probability'].iloc[0])).flatten()
             
@@ -217,10 +236,10 @@ def calc_data_single(N, tau, lock, noise):
             
             therm_data_df = pd.DataFrame({**therm_cumulants, 'probability': [therm_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['thermal'], 'noise': [w]})
             with lock:
-                df = pd.read_csv('data.csv')
+                df = pd.read_csv(data_file)
                 df = pd.concat([df, therm_data_df])
                 df = df.sort_values(['N', 'tau', 'noise'])
-                df.to_csv('data.csv', index=False)
+                df.to_csv(data_file, index=False)
                 
         if w==0 and spesific_df[spesific_df['type'] == 'analytic'].empty:
             analytic_probability_mass_function = pk_analitic(ks, tau)
@@ -233,10 +252,10 @@ def calc_data_single(N, tau, lock, noise):
             
             analytic_data_df = pd.DataFrame({**analytic_cumulants, 'probability': [analytic_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['analytic'], 'noise': [w]})
             with lock:
-                df = pd.read_csv('data.csv')
+                df = pd.read_csv(data_file)
                 df = pd.concat([df, analytic_data_df])
                 df = df.sort_values(['N', 'tau', 'noise'])
-                df.to_csv('data.csv', index=False)
+                df.to_csv(data_file, index=False)
 
 
 def pk_analitic(k_values, tau):
@@ -245,10 +264,48 @@ def pk_analitic(k_values, tau):
 
 def get_data_in_range(N, tau_min, tau_max, noise_min=0.0, noise_max=0.0):
     # Load the DataFrame
-    df = pd.read_csv('data.csv')
+    df = pd.read_csv(data_file)
     df = df.sort_values(['N', 'tau', 'noise'])
 
     # Apply the conditions and get the corresponding data
     return df[(df['N'] == N) & (df['tau'] >= tau_min) & (df['tau'] <= tau_max) & (df['noise'] >= noise_min) & (df['noise'] <= noise_max)]
 
 
+def load_data(lock):
+    try:
+        with lock:
+            df = pd.read_csv(data_file)
+        return df.sort_values(['N', 'tau', 'noise'])
+    except FileNotFoundError:
+        return pd.DataFrame(columns=['N', 'tau', 'type', 'noise', 'probability', 'mean', 
+                                     'second_moment', 'third_moment', 'fourth_moment',
+                                     'variance', 'skewness', 'kurtosis'])
+        
+
+        
+def calculate_and_save_type_data(df, N, tau, noise, type_key, calculation_function, lock):
+    if df[(df['N'] == N) & (df['tau'] == tau) & (df['noise'] == noise) & (df['type'] == type_key)].empty:
+        data = calculation_function(N, tau, noise)
+        data_df = pd.DataFrame({**data, 'N': [N], 'tau': [tau], 'type': [type_key], 'noise': [noise]})
+        with lock:
+            df = load_data()
+            df = pd.concat([df, data_df])
+            df = df.sort_values(['N', 'tau', 'noise'])
+            df.to_csv(data_file, index=False)
+    return df
+    
+def calc_data_single2(N, tau, lock, noise):
+    os.nice(1) # type: ignore
+    tau = round(tau, 6)
+    noise = round(noise, 6)
+    
+    
+    df = load_data(lock)
+
+    # Here, replace calculate_pk, calculate_numeric, etc. with actual function implementations
+    df = calculate_and_save_type_data(df, N, tau, noise, 'pk', calculate_pk, lock)
+    df = calculate_and_save_type_data(df, N, tau, noise, 'numeric', calculate_numeric, lock)
+    df = calculate_and_save_type_data(df, N, tau, noise, 'thermal', calculate_thermal, lock)
+    
+    if noise == 0:
+        calculate_and_save_type_data(df, N, tau, noise, 'analytic', calculate_analytic, lock)
