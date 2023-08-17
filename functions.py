@@ -243,7 +243,7 @@ def pk_analitic(k_values, tau):
     return np.array([np.exp(-2*np.pi*tau*(k**2))*(np.cos(k/2)**2) for k in k_values])
 
 
-def get_data_in_range(N, float:tau_min, float:tau_max, float:noise_min=0, float:noise_max=0):
+def get_data_in_range(N, tau_min, tau_max, noise_min=0.0, noise_max=0.0):
     # Load the DataFrame
     df = pd.read_csv('data.csv')
     df = df.sort_values(['N', 'tau', 'noise'])
