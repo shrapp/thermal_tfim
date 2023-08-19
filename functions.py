@@ -159,7 +159,7 @@ def calc_data(Ns, taus, noises):
 def calculate_pk(N, tau, noise, df):
     ks = k_f(np.arange(0, N/2), N)
     pks_numeric = calk_noisy_pk(ks, tau, noise)
-    return {'probability': pks_numeric.tolist()}
+    return {'probability': [pks_numeric.tolist()]}
 
 def calculate_numeric(N, tau, noise, df):
     pks_numeric = np.array(ast.literal_eval(df[(df['type'] == 'pk') & (df['N'] == N) & (df['tau'] == tau) & (df['noise'] == noise)]['probability'].iloc[0])).flatten()
@@ -167,7 +167,7 @@ def calculate_numeric(N, tau, noise, df):
     num_probability_mass_function = calc_kink_probabilities(pks_numeric, d_vals)
     num_probability_mass_function = clean_probabilities(num_probability_mass_function)
     num_cumulants = calculate_cumulants(num_probability_mass_function, d_vals)
-    return {**num_cumulants, 'probability': num_probability_mass_function.tolist()}
+    return {**num_cumulants, 'probability': [num_probability_mass_function.tolist()]}
 
 def calculate_thermal(N, tau, noise, df):
     d_vals = np.arange(0,N+1,2)
@@ -176,7 +176,7 @@ def calculate_thermal(N, tau, noise, df):
     therm_probability_mass_function = thermal_prob(d_num, N)
     therm_probability_mass_function = clean_probabilities(therm_probability_mass_function)
     therm_cumulants = calculate_cumulants(therm_probability_mass_function, d_vals)
-    return {**therm_cumulants, 'probability': therm_probability_mass_function.tolist()}
+    return {**therm_cumulants, 'probability': [therm_probability_mass_function.tolist()]}
 
 def calculate_analytic(N, tau, noise, df):
     d_vals = np.arange(0,N+1,2)
@@ -184,7 +184,7 @@ def calculate_analytic(N, tau, noise, df):
     analytic_probability_mass_function = pk_analitic(ks, tau)
     analytic_probability_mass_function = clean_probabilities(analytic_probability_mass_function)
     analytic_cumulants = calculate_cumulants(analytic_probability_mass_function, d_vals)
-    return {**analytic_cumulants, 'probability': analytic_probability_mass_function.tolist()}
+    return {**analytic_cumulants, 'probability': [analytic_probability_mass_function.tolist()]}
     
 def clean_probabilities(probability_mass_function):
     probability_mass_function = np.where(probability_mass_function < epsilon, 0, probability_mass_function)
@@ -306,7 +306,7 @@ def load_data(lock):
         
 def calculate_and_save_type_data(df, N, tau, noise, type_key, calculation_function, lock):
     if df[(df['N'] == N) & (df['tau'] == tau) & (df['noise'] == noise) & (df['type'] == type_key)].empty:
-        data = calculation_function(N, tau, noise)
+        data = calculation_function(N, tau, noise, df)
         data_df = pd.DataFrame({**data, 'N': [N], 'tau': [tau], 'type': [type_key], 'noise': [noise]})
         with lock:
             df = load_data(lock)
@@ -316,7 +316,7 @@ def calculate_and_save_type_data(df, N, tau, noise, type_key, calculation_functi
     return df
     
 def calc_data_single(N, tau, lock, noise):
-    os.nice(1) # type: ignore
+    # os.nice(1) # type: ignore
     tau = round(tau, 6)
     noise = round(noise, 6)
     
