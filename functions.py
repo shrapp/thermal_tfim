@@ -8,7 +8,7 @@ import pandas as pd
 from scipy.integrate import quad, solve_ivp
 from scipy.special import gammaln, logsumexp
 
-logging.basicConfig(filename='example.log')
+logging.basicConfig(filename='logger.log', level=logging.INFO, format='%(asctime)s %(message)s')
 
 # Parameters
 hbar = 1.0   # in natural units
@@ -362,9 +362,13 @@ def calc_data_single(N, tau, lock, noise):
     # Here, replace calculate_pk, calculate_numeric, etc. with actual function implementations
     df = calculate_and_save_type_data(df, N, tau, noise, 'pk', calculate_pk, lock)
     df = calculate_and_save_type_data(df, N, tau, noise, 'numeric', calculate_numeric, lock)
-    df = calculate_and_save_type_data(df, N, tau, noise, 'thermal1', calculate_thermal1, lock)
-    df = calculate_and_save_type_data(df, N, tau, noise, 'thermal2', calculate_thermal2, lock)
+
+    
+    calculate_and_save_type_data(df, N, tau, noise, 'thermal1', calculate_thermal1, lock)
+    calculate_and_save_type_data(df, N, tau, noise, 'thermal2', calculate_thermal2, lock)
     
     if noise == 0:
         calculate_and_save_type_data(df, N, tau, noise, 'analytic', calculate_analytic, lock)
     logging.info(f'Finished calculating data for N={N}, tau={tau}, noise={noise}')
+    
+    
