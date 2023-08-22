@@ -2,26 +2,20 @@
 
 ### sections:
 
-1. Motivation for the paper - create a benchmark for NISQ era computers using temperature as a single parameter to describe the amount of noise in the system.
+1. Motivation for the paper: create a benchmark for NISQ era computers using temperature as a single parameter to describe the amount of noise in the system.
 2. The paper is about the TFIM model with specific linear quench protocol (add the whole derivation)
-3. What is known about the TFIM model without noise (add some graphs of system size vs. tau)
+3. What is known about the TFIM model without noise (add some graphs of system size vs tau)
 4. The main sub sections of the analytic and numeric process and their contribution to the final states
 5. How thermal states are defined and behave in this model
 6. How the noise is defined and implemented in the model
 7. How noise affects the system in the Ks space and in the real space
-8. Thermal vs noise - not the same
+8. Thermal vs noise: not the same
 9. Summery
 
 ### Motivation
 
-this paper came from the will to create simple NISQ era computer benchmark using temperature as a single parameter to describe the amount of noise in the system. we have tried to describe the states of the system at the end of the process as thermal states.
+this paper came from the will to create simple NISQ era computer benchmark using temperature as a single parameter to describe the amount of noise in the system.\ we have tried to describe the states of the system at the end of the process as thermal states.
 
 ### The model
 
-
-\begin{equation} 
-H(t) = -J \sum_{n=1}^{N} \left( \sigma_n^z \sigma_{n+1}^z + g(t) \cdot \sigma_n^x \right) 
-\end{equation}
-
-
-$ g(t) = -\frac{t}{\tau} $
+$ H(t) = -J \sum_{n=1}^{N} \left( \sigma_n^z \sigma_{n+1}^z + g(t) \cdot \sigma_n^x \right) $
