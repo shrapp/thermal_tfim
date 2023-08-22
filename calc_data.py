@@ -1,5 +1,8 @@
 from functions import calc_data
 import numpy as np
+import logging
+
+logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
 
 Ns = [50,100]
 

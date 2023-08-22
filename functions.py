@@ -1,4 +1,5 @@
 import ast
+import logging
 import os
 from multiprocessing import Lock, Pool, Process
 
@@ -325,10 +326,9 @@ def get_data_in_range(N, tau_min, tau_max, noise_min=0.0, noise_max=0.0):
     return df[(df['N'] == N) & (df['tau'] >= tau_min) & (df['tau'] <= tau_max) & (df['noise'] >= noise_min) & (df['noise'] <= noise_max)]
 
 
-def load_data(lock):
+def load_data():
     try:
-        with lock:
-            df = pd.read_csv(data_file)
+        df = pd.read_csv(data_file)
         return df.sort_values(['N', 'tau', 'noise'])
     except FileNotFoundError:
         return pd.DataFrame(columns=['N', 'tau', 'type', 'noise', 'probability', 'mean', 
@@ -342,7 +342,7 @@ def calculate_and_save_type_data(df, N, tau, noise, type_key, calculation_functi
         data = calculation_function(N, tau, noise, df)
         data_df = pd.DataFrame({**data, 'N': [N], 'tau': [tau], 'type': [type_key], 'noise': [noise]})
         with lock:
-            df = load_data(lock)
+            df = load_data()
             df = pd.concat([df, data_df])
             df = df.sort_values(['N', 'tau', 'noise'])
             df.to_csv(data_file, index=False)
@@ -353,11 +353,13 @@ def calc_data_single(N, tau, lock, noise):
     tau = round(tau, 6)
     noise = round(noise, 6)
     
-    
-    df = load_data(lock)
+    with lock:
+        df = load_data()
+    logging.debug('df loaded')
 
     # Here, replace calculate_pk, calculate_numeric, etc. with actual function implementations
     df = calculate_and_save_type_data(df, N, tau, noise, 'pk', calculate_pk, lock)
+    logging.debug('pk calculated')
     df = calculate_and_save_type_data(df, N, tau, noise, 'numeric', calculate_numeric, lock)
     df = calculate_and_save_type_data(df, N, tau, noise, 'thermal1', calculate_thermal1, lock)
     df = calculate_and_save_type_data(df, N, tau, noise, 'thermal2', calculate_thermal2, lock)
