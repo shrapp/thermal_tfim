@@ -17,7 +17,7 @@ noises = data['noise'].unique()
 # taus = taus[taus <= 100]
 
 # remove noises greater than 10
-noises = noises[noises <= 2]
+noises = noises[noises <= 5]
 
 
 print(Ns)
