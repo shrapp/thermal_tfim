@@ -362,13 +362,16 @@ def calc_data_single(N, tau, lock, noise):
     # Here, replace calculate_pk, calculate_numeric, etc. with actual function implementations
     df = calculate_and_save_type_data(df, N, tau, noise, 'pk', calculate_pk, lock)
     df = calculate_and_save_type_data(df, N, tau, noise, 'numeric', calculate_numeric, lock)
-
     
-    calculate_and_save_type_data(df, N, tau, noise, 'thermal1', calculate_thermal1, lock)
-    calculate_and_save_type_data(df, N, tau, noise, 'thermal2', calculate_thermal2, lock)
-    
+    p1 = Process(target=calculate_and_save_type_data, args=(df, N, tau, noise, 'thermal1', calculate_thermal1, lock))
+    p1.start()
+    p2 = Process(target=calculate_and_save_type_data, args=(df, N, tau, noise, 'thermal2', calculate_thermal2, lock))
+    p2.start()
     if noise == 0:
-        calculate_and_save_type_data(df, N, tau, noise, 'analytic', calculate_analytic, lock)
+        p3 = Process(target=calculate_and_save_type_data, args=(df, N, tau, noise, 'analytic', calculate_analytic, lock))
+        p3.start()
+        p3.join()
+    p1.join()
+    p2.join()
+    
     logging.info(f'Finished calculating data for N={N}, tau={tau}, noise={noise}')
-    
-    
