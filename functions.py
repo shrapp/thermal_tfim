@@ -25,22 +25,21 @@ def H(t, tau, t_max, k):
 def psi_dt(t, psi,  tau, t_max, k):
     return -1j * np.dot(H(t, tau, t_max, k), psi)
 
-def rho_dt(t, rho, tau, t_max, k, w):
+def rho_dt(t, rho, tau, t_max, k, w, noise_matrix):
     h = H(t, tau, t_max, k)
-    z = np.array([[1, 0], [0, -1]])
     # convert rho from vector to matrix
     rho = rho.reshape((2,2))
-    return (-1j * (np.dot(h, rho) - np.dot(rho, h)) + w**2 * (np.dot(z, np.dot(rho,z)) - rho)).flatten()
+    return (-1j * (np.dot(h, rho) - np.dot(rho, h)) + w**2 * (np.dot(noise_matrix, np.dot(rho,noise_matrix)) - rho)).flatten()
 
 def lz_time_evolution_single_k(k, t_max, tau):
     # use scipy.integrate.solve_ivp to solve the ODE H(t) psi(t) = i hbar d/dt psi(t)
     psi0 = np.array([0+0j, 1+0j])
     return  solve_ivp(fun=psi_dt, method='DOP853', t_span=(0, t_max), y0=psi0, args=(tau, t_max, k), rtol = epsilon, atol = epsilon)
 
-def noisy_lz_time_evolution_single_k(k, t_max, tau, w):
+def noisy_lz_time_evolution_single_k(k, t_max, tau, w, noise_matrix):
     # use scipy.integrate.solve_ivp to solve the ODE H(t) psi(t) = i hbar d/dt psi(t)
     rho0 = np.array([[0+0j, 0+0j], [0+0j, 1+0j]])
-    return  solve_ivp(fun=rho_dt, method='DOP853', t_span=(0, t_max), y0=rho0.flatten(), args=(tau, t_max, k, w), rtol = epsilon, atol = epsilon)
+    return  solve_ivp(fun=rho_dt, method='DOP853', t_span=(0, t_max), y0=rho0.flatten(), args=(tau, t_max, k, w, noise_matrix), rtol = epsilon, atol = epsilon)
 
 def lz_time_evolution(ks, tau):
     t_max = 100*tau
@@ -49,11 +48,11 @@ def lz_time_evolution(ks, tau):
         results = pool.starmap(lz_time_evolution_single_k, [(k, t_max, tau) for k in ks])
     return results
 
-def noisy_lz_time_evolution(ks, tau, w):
+def noisy_lz_time_evolution(ks, tau, w, noise_matrix):
     t_max = 100*tau
     # use pool to parallelize the calculation for each k
     with Pool() as pool:
-        results = pool.starmap(noisy_lz_time_evolution_single_k, [(k, t_max, tau, w) for k in ks])
+        results = pool.starmap(noisy_lz_time_evolution_single_k, [(k, t_max, tau, w, noise_matrix) for k in ks])
     return results
 
 
@@ -65,9 +64,9 @@ def calc_pk(ks, tau):
     # remove valuse that are too small
     return  np.where(pks < epsilon/100, 0, pks)
 
-def calk_noisy_pk(ks, tau, w):
+def calk_noisy_pk(ks, tau, w, noise_matrix):
     # calculate the time evolution for each k
-    results = noisy_lz_time_evolution(ks, tau, w)
+    results = noisy_lz_time_evolution(ks, tau, w, noise_matrix)
     # calculate the probabilities for each k
     pks = np.array([np.abs(np.dot(np.array([np.sin(k/2), np.cos(k/2)]), np.dot(result.y[:,-1].reshape(2,2), np.array([[np.sin(k/2)], [np.cos(k/2)]]))))[0] for k ,result in zip(ks, results)])
     # remove valuse that are too small
@@ -185,7 +184,8 @@ def calc_data(Ns, taus, noises):
         
 def calculate_pk(N, tau, noise, df):
     ks = k_f(np.arange(0, N/2), N)
-    pks_numeric = calk_noisy_pk(ks, tau, noise)
+    z = np.array([[1, 0], [0, -1]])
+    pks_numeric = calk_noisy_pk(ks, tau, noise, z)
     return {'probability': str(pks_numeric.tolist())}
 
 def calculate_numeric(N, tau, noise, df):
@@ -231,90 +231,6 @@ def clean_probabilities(probability_mass_function):
     probability_mass_function[np.roll(mask, 1)] = 0
     return probability_mass_function
     
-
-# def calc_data_single(N, tau, lock, noise):
-#     os.nice(1) # type: ignore
-#     tau = round(tau, 6)
-#     w = round(noise, 6)
-    
-
-#     with lock:
-#         # Load data from file if it exists, or create an empty DataFrame
-#         try:
-#             df = pd.read_csv(data_file)
-#             df = df.sort_values(['N', 'tau', 'noise'])
-#         except FileNotFoundError:
-#             df = pd.DataFrame(columns=['N', 'tau', 'type', 'noise','probability', 'mean', 
-#                                     'second_moment', 'third_moment', 'fourth_moment',
-#                                     'variance', 'skewness', 'kurtosis'])
-
-#     # Check if data[N][tau][w] is in DataFrame
-#     if (not df.empty) and (not df[(df['N'] == N) & (df['tau'] == tau) & (df['noise'] == w)].empty):
-#         spesific_df = df[(df['N'] == N) & (df['tau'] == tau) & (df['noise'] == w)]
-#         ks = k_f(np.arange(0, N/2), N)
-#         d_vals = np.arange(0,N+1,2)
-#         if spesific_df[spesific_df['type'] == 'pk'].empty:
-#             pks_numeric = calk_noisy_pk(ks, tau, w)
-#             pk_data_df = pd.DataFrame({'probability': [pks_numeric.tolist()], 'N': [N], 'tau': [tau], 'type': ['pk'], 'noise': [w]})
-#             with lock:
-#                 df = pd.read_csv(data_file)
-#                 df = pd.concat([df, pk_data_df])
-#                 df = df.sort_values(['N', 'tau', 'noise'])
-#                 df.to_csv(data_file, index=False)
-#         else: 
-#             pks_numeric = np.array(ast.literal_eval(spesific_df[spesific_df['type'] == 'pk']['probability'].iloc[0])).flatten()
-        
-#         if spesific_df[spesific_df['type'] == 'numeric'].empty:
-#             num_probability_mass_function = calc_kink_probabilities(pks_numeric, d_vals)
-#             num_probability_mass_function = np.where(num_probability_mass_function < epsilon, 0, num_probability_mass_function)
-#             num_mask = (np.roll(num_probability_mass_function, 0) == 0) & (np.roll(num_probability_mass_function, -2) == 0)
-#             num_mask[-1] = False
-#             num_mask[-2] = False
-#             num_probability_mass_function[np.roll(num_mask, 1)] = 0
-#             num_cumulants = calculate_cumulants(num_probability_mass_function, d_vals)
-            
-#             num_data_df = pd.DataFrame({**num_cumulants, 'probability': [num_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['numeric'], 'noise': [w]})
-#             with lock:
-#                 df = pd.read_csv(data_file)
-#                 df = pd.concat([df, num_data_df])
-#                 df = df.sort_values(['N', 'tau', 'noise'])
-#                 df.to_csv(data_file, index=False)
-#         else:
-#             num_probability_mass_function = np.array(ast.literal_eval(spesific_df[spesific_df['type'] == 'numeric']['probability'].iloc[0])).flatten()
-            
-#         if spesific_df[spesific_df['type'] == 'thermal'].empty:
-#             d_num = D_func(num_probability_mass_function)
-#             therm_probability_mass_function = thermal_prob(d_num, N)
-#             therm_probability_mass_function = np.where(therm_probability_mass_function < epsilon, 0, therm_probability_mass_function)
-#             therm_mask = (np.roll(therm_probability_mass_function, 0) == 0) & (np.roll(therm_probability_mass_function, -2) == 0)
-#             therm_mask[-1] = False
-#             therm_mask[-2] = False
-#             therm_probability_mass_function[np.roll(therm_mask, 1)] = 0
-#             therm_cumulants = calculate_cumulants(therm_probability_mass_function, d_vals)
-            
-#             therm_data_df = pd.DataFrame({**therm_cumulants, 'probability': [therm_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['thermal'], 'noise': [w]})
-#             with lock:
-#                 df = pd.read_csv(data_file)
-#                 df = pd.concat([df, therm_data_df])
-#                 df = df.sort_values(['N', 'tau', 'noise'])
-#                 df.to_csv(data_file, index=False)
-                
-#         if w==0 and spesific_df[spesific_df['type'] == 'analytic'].empty:
-#             analytic_probability_mass_function = pk_analitic(ks, tau)
-#             analytic_probability_mass_function = np.where(analytic_probability_mass_function < epsilon, 0, analytic_probability_mass_function)
-#             analytic_mask = (np.roll(analytic_probability_mass_function, 0) == 0) & (np.roll(analytic_probability_mass_function, -2) == 0)
-#             analytic_mask[-1] = False
-#             analytic_mask[-2] = False
-#             analytic_probability_mass_function[np.roll(analytic_mask, 1)] = 0
-#             analytic_cumulants = calculate_cumulants(analytic_probability_mass_function, d_vals)
-            
-#             analytic_data_df = pd.DataFrame({**analytic_cumulants, 'probability': [analytic_probability_mass_function.tolist()], 'N': [N], 'tau': [tau], 'type': ['analytic'], 'noise': [w]})
-#             with lock:
-#                 df = pd.read_csv(data_file)
-#                 df = pd.concat([df, analytic_data_df])
-#                 df = df.sort_values(['N', 'tau', 'noise'])
-#                 df.to_csv(data_file, index=False)
-
 
 def pk_analitic(k_values, tau):
     return np.array([np.exp(-2*np.pi*tau*(k**2))*(np.cos(k/2)**2) for k in k_values])
