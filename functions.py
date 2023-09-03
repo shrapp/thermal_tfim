@@ -29,7 +29,8 @@ def rho_dt(t, rho, tau, t_max, k, w, noise_matrix):
     h = H(t, tau, t_max, k)
     # convert rho from vector to matrix
     rho = rho.reshape((2,2))
-    return (-1j * (np.dot(h, rho) - np.dot(rho, h)) + w**2 * (np.dot(noise_matrix, np.dot(rho,noise_matrix)) - rho)).flatten()
+    D = np.dot(noise_matrix, np.dot(rho,noise_matrix.H)) - 0.5 * (np.dot(rho, np.dot(noise_matrix.H,noise_matrix)) + np.dot(noise_matrix.H, np.dot(noise_matrix,rho)))
+    return (-1j * (np.dot(h, rho) - np.dot(rho, h)) + w**2 * D).flatten()
 
 def lz_time_evolution_single_k(k, t_max, tau):
     # use scipy.integrate.solve_ivp to solve the ODE H(t) psi(t) = i hbar d/dt psi(t)
@@ -184,7 +185,7 @@ def calc_data(Ns, taus, noises):
         
 def calculate_pk(N, tau, noise, df):
     ks = k_f(np.arange(0, N/2), N)
-    z = np.array([[1, 0], [0, -1]])
+    z = np.matrix([[1, 0], [0, -1]])
     pks_numeric = calk_noisy_pk(ks, tau, noise, z)
     return {'probability': str(pks_numeric.tolist())}
 
