@@ -74,14 +74,21 @@ def calk_noisy_pk(ks, tau, w, noise_matrix):
     return  np.where(pks < epsilon/100, 0, pks)
      
 
-def k_f(n, N):
-    return np.pi * (2 * n + 1) / N
+def k_f(N):
+    # Generating an array from -N to N
+    full_array = np.arange(-N+1, N)
+    
+    # Filtering out even numbers
+    odd_numbers = full_array[full_array % 2 != 0]
+    
+    # Multiply each odd number by pi/N
+    return odd_numbers * np.pi / N
 
 def p_k_analytic(tau, k):
     return np.exp(-2*np.pi*tau*(k**2))*(np.cos(k/2)**2)
 
 def ln_P_tilda_func(theta, pks):
-    return np.sum(np.log(1 + pks * (np.exp(1j * theta * 2) - 1)))
+    return np.sum(np.log(1 + pks * (np.exp(1j * theta) - 1)))
 
 def integrand_func(theta, pks, d):
     return np.exp(ln_P_tilda_func(theta, pks) - 1j * theta * d)
@@ -184,7 +191,7 @@ def calc_data(Ns, taus, noises):
         
         
 def calculate_pk(N, tau, noise, df):
-    ks = k_f(np.arange(0, N/2), N)
+    ks = k_f(N)
     z = np.matrix([[1, 0], [0, -1]])
     pks_numeric = calk_noisy_pk(ks, tau, noise, z)
     return {'probability': str(pks_numeric.tolist())}
@@ -216,7 +223,7 @@ def calculate_thermal2(N, tau, noise, df):
     return {**therm_cumulants, 'probability': str(therm_probability_mass_function.tolist())}
 
 def calculate_analytic(N, tau, noise, df):
-    ks = k_f(np.arange(0, N/2), N)
+    ks = k_f(N)
     pks_analytic = pk_analitic(ks, tau)
     d_vals = np.arange(0,N+1,2)
     analytic_probability_mass_function = calc_kink_probabilities(pks_analytic, d_vals)
