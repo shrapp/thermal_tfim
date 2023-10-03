@@ -1,0 +1,449 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{breqn}
+\geometry{margin=1in}
+\title{TFIM Noisy States as Thermal States}
+\begin{document}
+\maketitle
+
+\section*{Sections:}
+\begin{enumerate}
+    \item Motivation for the paper: create a benchmark for NISQ era computers using temperature as a single parameter to describe the amount of noise in the system.
+    \item The paper is about the TFIM model with specific linear quench protocol (add the whole derivation)
+    \item What is known about the TFIM model without noise (add some graphs of system size vs tau)
+    \item The main sub sections of the analytic and numeric process and their contribution to the final states
+    \item How thermal states are defined and behave in this model
+    \item How the noise is defined and implemented in the model
+    \item How noise affects the system in the Ks space and in the real space
+    \item Thermal vs noise: not the same
+    \item Summary
+\end{enumerate}
+
+\section*{Motivation}
+This paper came from the will to create simple NISQ era computer benchmark using temperature as a single parameter to describe the amount of noise in the system. We have tried to describe the states of the system at the end of the process as thermal states.
+
+\section*{The Model}
+In this study, we are looking into a transverse field Ising model, which is going through a quantum phase transition. The Hamiltonian is:
+\begin{equation}
+    \hat{H}(t)=-J\sum_{n=1}^N \left( g(t) \cdot \sigma_n^z \sigma_{n+1}^z + (1-g(t)) \sigma_n^x \right)
+\end{equation}
+with periodic boundary conditions: $\sigma_{N+1}=\sigma_1$ and $g(t)=\frac{t}{\tau}+\gamma(t)$ while $0 \leq t \leq \tau$. For convenience we assume $N$ is even.
+\\After a Jordan-Wigner transformation defining: $\sigma_n^x=1-2c_n^\dagger c_n$ and $\sigma_n^z=-(c_n^\dagger+c_n) \prod_{m<n} (1-2c_m^\dagger c_m)$
+\begin{equation}
+    \begin{split}
+        \hat{H}(t) & =-J\sum_{n=1}^N \bigg( g(t) \cdot \bigg( -(c_n^\dagger+c_n) \prod_{m<n} (1-2c_m^\dagger c_m) \bigg) \bigg( -(c_{n+1}^\dagger+c_{n+1}) \prod_{m<n+1} (1-2c_m^\dagger c_m) \bigg) \\
+        & \qquad + (1-g(t))(1-2c_n^\dagger c_n) \bigg) \\
+        & =-J\sum_{n=1}^N \bigg( g(t) \cdot (c_n^\dagger+c_n) \bigg( \prod_{m<n} (1-2c_m^\dagger c_m) \bigg)^2 (c_{n+1}^\dagger+c_{n+1})(1-2c_n^\dagger c_n) \\
+        & \qquad + (1-g(t))(1-2c_n^\dagger c_n) \bigg) \\
+        & =-J\sum_{n=1}^N \bigg( g(t)(c_n^\dagger+c_n)(c_{n+1}^\dagger+c_{n+1}) + (1-g(t))(1-2c_n^\dagger c_n) \bigg) \\
+        & =-J\sum_{n=1}^N \bigg( g(t) c_n^\dagger c_{n+1}^\dagger +g(t) c_n^\dagger c_{n+1}+g(t) c_n c_{n+1}^\dagger +g(t) c_n c_{n+1}+1-g(t) \\
+        & \qquad -2g(t) c_n^\dagger c_{n+1}^\dagger c_n^\dagger c_n-2g(t) c_n^\dagger c_{n+1} c_n^\dagger c_n-2g(t) c_n c_{n+1}^\dagger c_n^\dagger c_n-2c_n^\dagger c_n+2g(t) c_n^\dagger c_n \bigg) \\
+        & =-J\sum_{n=1}^N \bigg( g(t)(c_n^\dagger c_{n+1}^\dagger+c_n c_{n+1}) +g(t)(c_n^\dagger c_{n+1}+c_n c_{n+1}^\dagger )+1-g(t) \\
+        & \qquad -2g(t) c_n c_{n+1}^\dagger c_n^\dagger c_n-2g(t) c_n c_{n+1} c_n^\dagger c_n-2c_n^\dagger c_n+2g(t) c_n^\dagger c_n \bigg) \\
+        & =-J\sum_{n=1}^N \bigg( g(t)(c_n^\dagger c_{n+1}^\dagger-c_n c_{n+1}) +g(t)(c_n^\dagger c_{n+1}-c_n c_{n+1}^\dagger )+1-g(t) \\
+        & \qquad -(1-g(t))(c_n^\dagger c_n+1-c_n c_n^\dagger ) \bigg) \\
+        & =-J\sum_{n=1}^N \bigg( g(t)(c_n^\dagger c_{n+1}^\dagger-c_n c_{n+1}) +g(t)(c_n^\dagger c_{n+1}-c_n c_{n+1}^\dagger )-(1-g(t))(c_n^\dagger c_n-c_n c_n^\dagger ) \bigg)
+    \end{split}
+\end{equation}
+we can write the Hamiltonian as: $\hat{H}(t)=P^\dagger \hat{H}^\dagger (t) P^\dagger+P^- \hat{H}^- (t) P^-$ where : $P^\pm=\frac{1}{2} (1\pm\prod_{n=1}^N (1-2c_n^\dagger c_n) )$. we can confine ourselves to the subspace of even parity because we start at the ground state which has even parity for any value of $g$. In that subspace: $P^-=0,P^\dagger=1$ s.t. $\hat{H}(t)=P^\dagger \hat{H}^\dagger (t) P^\dagger=\hat{H}^\dagger (t)=-J\sum_{n=1}^N \left( g(t)(c_n^\dagger c_{n+1}^\dagger-c_n c_{n+1}) +g(t)(c_n^\dagger c_{n+1}-c_n c_{n+1}^\dagger )-(1-g(t))(c_n^\dagger c_n-c_n c_n^\dagger ) \right)$ and $c_n$’s in $\hat{H}^\dagger$ must obey $c_{N+1}=-c_1$. $\hat{H}^\dagger$ is diagonalized by Fourier transform followed by Bogoliubov transformation: $c_n=\frac{e^{-i \pi/4}}{\sqrt{N}} \sum_k c_k e^{ikn}$ , and $k=\pm\frac{z\pi}{N} \, \text{for} \, z \in 1,2,\ldots,N-1$.
+\[
+    c_n^\dagger c_{n+1}^\dagger=\frac{e^{i \pi/4}}{\sqrt{N}} \sum_{k'} c_{k'}^\dagger e^{-ik'n} \frac{e^{i \pi/4}}{\sqrt{N}} \sum_k c_k^\dagger e^{-ik(n+1)} = \frac{e^{i 2\pi/4}}{N} \sum_{k,k'} e^{-ik} c_k^\dagger c_{k'}^\dagger e^{-in(k+k')}
+\]
+\[
+    c_n c_{n+1}=\frac{e^{-i \pi/4}}{\sqrt{N}} \sum_k c_k e^{ikn} \frac{e^{-i \pi/4}}{\sqrt{N}} \sum_{k'} c_{k'} e^{ik'(n+1)} = \frac{e^{-i 2\pi/4}}{N} \sum_{k,k'} e^{-ik'} c_k c_{k'} e^{-in(k+k')}
+\]
+\[
+    c_n^\dagger c_{n+1}=\frac{e^{i \pi/4}}{\sqrt{N}} \sum_{k'} c_{k'}^\dagger e^{-ik'n} \frac{e^{-i \pi/4}}{\sqrt{N}} \sum_k c_k e^{ik(n+1)} = \frac{1}{N} \sum_{k,k'} e^{-ik} c_{k'}^\dagger c_k e^{-in(k-k')}
+\]
+\begin{equation}
+    \begin{aligned}
+        \hat{H}^+(t) & = -J\sum_{n=1}^N \left(g(t)(c_n^\dagger c_{n+1}^\dagger - c_n c_{n+1}) + g(t)(c_n^\dagger c_{n+1} - c_n c_{n+1}^\dagger) - (1-g(t))(c_n^\dagger c_n - c_n c_n^\dagger)\right) \\
+                     & = -J\sum_k g(t)(-\sin(k) (c_k^\dagger c_{-k}^\dagger - c_k c_{-k}) + \cos(k) (c_k^\dagger c_k - c_{-k} c_{-k}^\dagger))                                                       \\
+                     & \quad - (1-g(t))(c_k^\dagger c_k - c_{-k} c_{-k}^\dagger)                                                                                                                     \\
+                     & = J\sum_k \left(g(t) \sin(k) (c_k^\dagger c_{-k}^\dagger + c_{-k} c_k) + (1-g(t)-g(t)\cos(k))(c_k^\dagger c_k - c_{-k} c_{-k}^\dagger)\right)                                 \\
+                     & = J\sum_k \begin{pmatrix}
+                                     c_k^\dagger & c_{-k}
+                                 \end{pmatrix}
+        \begin{pmatrix}
+            (1-g-g \cos(k)) & g \sin(k)        \\
+            g \sin(k)       & -(1-g-g \cos(k))
+        \end{pmatrix}
+        \begin{pmatrix}
+            c_k \\
+            c_{-k}^\dagger
+        \end{pmatrix}                                                                                                                                                                               \\
+                     & = 2J\sum_{k>0} \left(g(t) \sin(k) (c_k^\dagger c_{-k}^\dagger + c_{-k} c_k) + (1-g(t)-g(t)\cos(k))(c_k^\dagger c_k - c_{-k} c_{-k}^\dagger)\right)                            \\
+                     & \quad + 2J\sum_{k>0} \left(-g(t) \sin(k) (c_{-k}^\dagger c_k^\dagger + c_k c_{-k}) + (1-g(t)-g(t)\cos(k))((1-c_{-k} c_{-k}^\dagger) - (1-c_k^\dagger c_k))\right)             \\
+                     & = 2J\sum_{k>0} \left(g(t) \sin(k) (c_k^\dagger c_{-k}^\dagger + c_{-k} c_k) + (1-g(t)-g(t)\cos(k))(c_k^\dagger c_k - c_{-k} c_{-k}^\dagger)\right)                            \\
+                     & \quad + 2J\sum_{k>0} \left(g(t) \sin(k) (c_k^\dagger c_{-k}^\dagger + c_{-k} c_k) + (1-g(t)-g(t)\cos(k))((1-c_{-k} c_{-k}^\dagger) - (1-c_k^\dagger c_k))\right)              \\
+                     & = 2J\sum_{k>0}
+        \begin{pmatrix}
+            c_k^\dagger & c_{-k}
+        \end{pmatrix}
+        \begin{pmatrix}
+            (1-g-g \cos(k)) & g \sin(k)        \\
+            g \sin(k)       & -(1-g-g \cos(k))
+        \end{pmatrix}
+        \begin{pmatrix}
+            c_k \\
+            c_{-k}^\dagger
+        \end{pmatrix}                                                                                                                                                                               \\
+                     & = 2J\sum_{k>0} \left(g(t) \sin(k) (c_k^\dagger c_{-k}^\dagger + c_{-k} c_k) + (1-g(t)-g(t)\cos(k))(c_k^\dagger c_k - c_{-k} c_{-k}^\dagger)\right).
+    \end{aligned}
+\end{equation}
+
+Now, let's define: \(c_k = u_k(t) \gamma_k + v_{-k}^*(t) \gamma_{-k}^\dagger\) or equivalently \(\gamma_k = u_k^* c_k + v_{-k} c_{-k}^\dagger\) where \(\gamma_k\) annihilates a fermionic Bogoliubov quasiparticle. And \((u_k, v_k)\) are eigenstates of the stationary Bogoliubov-de Gennes equations:
+
+\[
+    \omega_k
+    \begin{pmatrix}
+        u_k \\
+        v_k
+    \end{pmatrix}
+    =
+    \begin{pmatrix}
+        (1-g-g \cos(k)) & g \sin(k)        \\
+        g \sin(k)       & -(1-g-g \cos(k))
+    \end{pmatrix}
+    \begin{pmatrix}
+        u_k \\
+        v_k
+    \end{pmatrix},
+\]
+
+\[
+    \omega_k = \pm\sqrt{(1-g-g \cos(k))^2 + g^2 \sin^2 k}.
+\]
+
+Substitute into \(\hat{H}^+\) will yield \(\hat{H}^+ = 2J\sum_k \omega_k (\gamma_k^\dagger \gamma_k - 1/2)\).
+
+The number of kinks operator is \(N = \frac{1}{2} \sum_{n=1}^N (1 - \sigma_n^Z \sigma_{n+1}^Z)\) , when \(g(t)=1\) at the end of the process:
+
+\[
+    2J\sum_k (\gamma_k^\dagger \gamma_k - 1/2) = -J\sum_{n=1}^N \sigma_n^Z \sigma_{n+1}^Z = J(2N - N) = J(2\sum_k \gamma_k^\dagger \gamma_k - N)
+\]
+
+\[
+    2N - N = 2\sum_k \gamma_k^\dagger \gamma_k - N \Rightarrow N = \sum_k \gamma_k^\dagger \gamma_k.
+\]
+\begin{align*}
+    \langle \gamma_k^\dagger \gamma_k \rangle & = \langle (u_k^{* \dagger} c_k^\dagger + v_{-k}^\dagger c_{-k})(u_k^* c_k + v_{-k} c_{-k}^\dagger) \rangle                                                                                                                                   \\
+                                              & = \langle (u_k^{* \dagger} u_k^* c_k^\dagger c_k + u_k^{* \dagger} v_{-k} c_k^\dagger c_{-k}^\dagger + v_{-k}^\dagger u_k^* c_{-k} c_k + v_{-k}^\dagger v_{-k} c_{-k} c_{-k}^\dagger) \rangle                                                \\
+                                              & = u_k^{* \dagger} u_k^* \langle c_k^\dagger c_k \rangle + u_k^{* \dagger} v_{-k} \langle c_k^\dagger c_{-k}^\dagger \rangle + v_{-k}^\dagger u_k^* \langle c_{-k} c_k \rangle + v_{-k}^\dagger v_{-k} \langle c_{-k} c_{-k}^\dagger \rangle.
+\end{align*}
+
+For \( \cos(k) \geq 0 \) the matrix
+\[
+    \begin{pmatrix}
+        g - \cos(k) & \sin(k)        \\
+        \sin(k)     & -(g - \cos(k))
+    \end{pmatrix}
+\]
+can be described by the Landau-Zener formula such that \( \langle \gamma_k^\dagger \gamma_k \rangle \propto e^{-J/\hbar 2\pi\tau \sin^2(k)} \) but otherwise the modes don't complete the Landau-Zener transition.
+
+For \( \cos(k) < 0 \), \( (g - \cos(k)) \) never reaches 0 and there isn't any level crossing such that the end state doesn’t depend on \( \tau \) and can be determined by the projection of the final states.
+
+\begin{align*}
+    H_{\text{lz}}(t=0)      & = 2\sum_{k>0}
+    \begin{pmatrix}
+        c_k^\dagger & c_{-k}
+    \end{pmatrix}
+    \begin{pmatrix}
+        -\cos(k) & \sin(k) \\
+        \sin(k)  & \cos(k)
+    \end{pmatrix}
+    \begin{pmatrix}
+        c_k \\
+        c_{-k}^\dagger
+    \end{pmatrix},                                                               \\
+    \Rightarrow \lambda_\pm & = \pm 1,                                           \\
+    \Rightarrow \nu_\pm     & = \frac{1}{\sqrt{((\cos(k) \pm 1)/\sin(k))^2 + 1}}
+    \begin{pmatrix}
+        1 \\
+        (\cos(k) \pm 1)/\sin(k)
+    \end{pmatrix}
+    =
+    \begin{pmatrix}
+        \sin(k/2) \\
+        \cos(k/2)
+    \end{pmatrix}.
+\end{align*}
+
+
+\[
+    \left| \langle \psi | \nu_+ \rangle \right|^2 = \left| c_- \sin(k/2) + c_+ \cos(k/2) \right|^2 = f(k, \tau) \sim e^{-g(k,\tau)} \cos^2(k/2),
+\]
+
+where
+
+\[
+    g(k, \tau \ll 1) = 16.6\tau \sin^2(k/2), \quad g(k, \tau = 0) = 0.
+\]
+
+\[
+    \left| \langle - | \nu_+ \rangle \right|^2 = \left|
+    \begin{pmatrix}
+        0 & 1
+    \end{pmatrix}
+    \frac{1}{\sqrt{((\cos(k) + 1)/\sin(k))^2 + 1}}
+    \begin{pmatrix}
+        1 \\
+        (\cos(k) + 1)/\sin(k)
+    \end{pmatrix}
+    \right|^2
+\]
+\[
+    = \left| \frac{(\cos(k) + 1)/\sin(k)}{\sqrt{((\cos(k) + 1)/\sin(k))^2 + 1}} \right|^2 = \cos^2(k/2).
+\]
+
+By diagonalizing this matrix at \( g = 0 \) we get that the overlap between the initial minus eigenstate and the final excited eigenstate is \( \cos^2(k/2) \). It works in both boundaries when \( k = 0 \), and for \( k = \pi \). So we can assume that the total excitation probability can be described as the product:
+
+\[
+    \langle \gamma_k^\dagger \gamma_k \rangle \sim e^{-J/\hbar 2\pi\tau \sin^2(k)} \cdot \cos^2(k/2) = p_k.
+\]
+
+\[
+    \delta[\hat{N} - n] = \frac{1}{2\pi} \int_{-\pi}^{\pi} d\theta e^{i\theta(\hat{N} - n)}.
+\]
+
+\[
+    P(n) = \langle \delta[\hat{N}-n] \rangle = \mathrm{Tr}[\rho_{\tau} \delta[\hat{N}-n]] = \mathrm{Tr}[\rho_{\tau} \frac{1}{2\pi} \int_{-\pi}^{\pi} d\theta e^{i\theta(\hat{N}-n)}] = \frac{1}{2\pi} \int_{-\pi}^{\pi} d\theta \mathrm{Tr}[\rho_{\tau} e^{i\theta\hat{N}}] e^{-i\theta n}.
+\]
+
+\[
+    \mathrm{Tr}[\rho_{\tau} e^{i\theta\hat{N}}] = \tilde{P}(\theta,\tau) = \chi(\theta)
+\]
+\[
+    \hat{N} = \sum_k (\gamma_k^{\dagger} \gamma_k)
+\]
+\[
+    \rho_{\tau} = \bigotimes \rho_{(k,\tau)}
+\]
+\[
+    \tilde{P}(\theta,\tau) = \prod_k \mathrm{Tr}[\rho_{(k,\tau)} e^{i\theta\gamma_k^{\dagger} \gamma_k}].
+\]
+
+\[
+    e^{i\theta\gamma_k^{\dagger} \gamma_k} = \sum_{i=0}^{\infty} \frac{(i\theta)^i}{i!} (\gamma_k^{\dagger} \gamma_k)^i = I + \sum_{i=1}^{\infty} \frac{(i\theta)^i}{i!} (\gamma_k^{\dagger} \gamma_k)^i = I + \gamma_k^{\dagger} \gamma_k \sum_{i=1}^{\infty} \frac{(i\theta)^i}{i!} = I + \gamma_k^{\dagger} \gamma_k (e^{i\theta}-1).
+\]
+
+\[
+    P(n) = \langle \delta[\hat{N}-n] \rangle = \frac{1}{2\pi} \int_{-\pi}^{\pi} d\theta \prod_k [1+(e^{i\theta}-1)\langle \gamma_k^{\dagger} \gamma_k \rangle] e^{-i\theta n}.
+\]
+
+\[
+    \tilde{P}(\theta,\tau) = \prod_k \mathrm{Tr}[\rho_{(k,\tau)} e^{i\theta\gamma_k^{\dagger} \gamma_k}] = \prod_k [1+(e^{i\theta}-1)\langle \gamma_k^{\dagger} \gamma_k \rangle]
+\]
+\[
+    \langle \gamma_k^{\dagger} \gamma_k \rangle \sim e^{-(2\pi J\tau\sin^2(k))/\hbar} \cos^2(k/2) = p_k.
+\]
+
+\begin{equation}
+    \ln(\tilde{P}(\theta,\tau)) = \sum_k \ln(1+(e^{i\theta}-1)p_k)
+\end{equation}
+\begin{equation}
+    \sum_{k>0}\ln(1+(e^{i2\theta}-1)p_k)
+\end{equation}
+\begin{equation}
+    K(\theta) = \ln(\chi(\theta)) = \ln\left(\prod_k [1+(e^{i\theta}-1)\langle \gamma_k^{\dagger} \gamma_k \rangle]\right) = \sum_k \ln(1+(e^{i\theta}-1)p_k).
+\end{equation}
+
+\begin{align*}
+    \text{In the continuum limit:} \, & \sum_{k>0}\ln(1+(e^{2i\theta}-1) p_k ) \approx \frac{N}{\pi} \int_0^{\pi} dk \, \ln(1+(e^{2i\theta}-1) p_k )                                                                              \\
+                                      & \approx \frac{N}{\pi} \int_0^{\pi} dk \, \sum_{p=1}^{\infty} \frac{(-1)^{p+1}}{p} ((e^{2i\theta}-1) p_k )^p                                                                               \\
+                                      & = -\frac{N}{\pi} \sum_{p=1}^{\infty}\frac{(1-e^{2i\theta})^p}{p} \int_0^{\pi} dk \, \left(e^{-\left(\frac{2\pi J\tau \sin^2 (k)}{\hbar}\right)} \cos^2 \left(\frac{k}{2}\right)\right)^p.
+\end{align*}
+
+\text{For } $\tau > 10^{-1} : \, e^{-\left(\frac{2\pi J\tau \sin^2 (k)}{\hbar}\right)} \cos^2 \left(\frac{k}{2}\right) \approx e^{-\left(\frac{2\pi J\tau p k^2}{\hbar}\right)}$
+
+\begin{align*}
+    -\frac{N}{\pi} \sum_{p=1}^{\infty}\frac{(1-e^{2i\theta})^p}{p} \int_0^{\pi} dk \, e^{-\left(\frac{2\pi J\tau p k^2}{\hbar}\right)} & = -\frac{N}{2\pi} \sum_{p=1}^{\infty}\frac{(1-e^{2i\theta})^p}{p} \sqrt{\frac{\hbar}{2J\tau p}} \, \text{erf}\left(\sqrt{\frac{2J p \tau \pi^3}{\hbar}}\right) \\
+                                                                                                                                       & = \sum_{p=1}^{\infty} \frac{(i\theta)^p}{p!} \kappa_p.
+\end{align*}
+
+\text{For } $\tau > \frac{1}{3}$, $\text{erf}\left(\sqrt{\frac{2J p \tau \pi^3}{\hbar}}\right) \approx 1$ \, \text{ such that }
+
+\begin{align*}
+    -\frac{N}{2\pi} \sum_{n=1}^{\infty} \left(-\sum_{m=1}^{\infty}\frac{(2i\theta)^m}{m!}\right)^n/n \sqrt{\frac{\hbar}{2J\tau n}}   & = \sum_{p=1}^{\infty} \frac{(i\theta)^p}{p!} \kappa_p  \\
+    -\frac{N}{2\pi} \sum_{n=1}^{\infty} \frac{((-1)^n (2i\theta-2\theta^2-(8i\theta^3)/6\ldots)^n)}{n} \sqrt{\frac{\hbar}{2J\tau n}} & = \sum_{p=1}^{\infty} \frac{(i\theta)^p}{p!} \kappa_p.
+\end{align*}
+
+\begin{align*}
+    \kappa_2 & = \frac{2}{(-\theta^2)} \left(-\frac{N}{2\pi}\right)(2\theta^2 \sqrt{\frac{\hbar}{2J\tau}}+(2i\theta)^2/2 \sqrt{\frac{\hbar}{4J\tau}}) \sqrt{\frac{\hbar}{2J\tau n}}=\kappa_1 (2-\sqrt{2})  \\
+    \text{Which yields:}                                                                                                                                                                                   \\
+    \kappa_1 & = \sqrt{\frac{\hbar}{2J\tau}} \frac{N}{\pi},                                                                                                                                                \\
+    \kappa_2 & = \frac{2}{(-\theta^2)} \left(-\frac{N}{2\pi}\right)(2\theta^2 \sqrt{\frac{\hbar}{2J\tau}}+(2i\theta)^2/2 \sqrt{\frac{\hbar}{4J\tau}}) \sqrt{\frac{\hbar}{2J\tau n}}=\kappa_1 (2-\sqrt{2}), \\
+    \kappa_3 & = \kappa_1 2(1-3/\sqrt{2}+2/\sqrt{3}).
+\end{align*}
+
+\text{For small } $\tau$:
+
+\begin{align*}
+    -\frac{N}{\pi} \sum_{p=1}^{\infty}\frac{(1-e^{2i\theta})^p}{p} \int_0^{\pi} dk \, \left(e^{-\left(\frac{2\pi J\tau \sin^2 (k)}{\hbar}\right)} \cos^2 \left(\frac{k}{2}\right)\right)^p \\
+     & \approx -\frac{N}{\sqrt{\pi}} \sum_{p=1}^{\infty} \left(-\sum_{m=1}^{\infty}\frac{(2i\theta)^m}{m!}\right)^p \frac{1}{p} \frac{\Gamma\left(p+\frac{1}{2}\right)}{\Gamma(p+1)}       \\
+     & = \sum_{p=1}^{\infty} \frac{(i\theta)^p}{p!} \kappa_p.
+\end{align*}
+
+\begin{align*}
+    \kappa_p & = -\frac{N p!}{(\sqrt{\pi} (i\theta)^p)} \sum_{n=1}^{\infty} \frac{((-1)^n (\sum_{m=1}^{\infty}(2i\theta)^m/m!)^n)}{n} \, \frac{\Gamma\left(n+\frac{1}{2}\right)}{\Gamma(n+1)} : i\theta \text{ cancel}      \\
+    \kappa_p & = -\frac{N p!}{(\sqrt{\pi} (i\theta)^p)} \sum_{n=1}^{\infty} \frac{((-1)^n (2i\theta-2\theta^2-(8i\theta^3)/6\ldots)^n)}{n} \, \frac{\Gamma\left(n+\frac{1}{2}\right)}{\Gamma(n+1)} : i\theta \text{ cancel} \\
+    \kappa_1 & = -\frac{N}{(\sqrt{\pi} (i\theta)^1)} \frac{((-1)^1 (2i\theta-2\theta^2-(8i\theta^3)/6\ldots)^1)}{1} \, \sqrt{\pi}/2=N                                                                                       \\
+    \kappa_2 & = -\frac{N 2}{(\sqrt{\pi} (i\theta)^2)} (\theta^2 \sqrt{\pi}+(-4\theta^2)/2 \, 3 \sqrt{\pi}/8)=\kappa_1 2(1-3/4)=\kappa_1/2.
+\end{align*}
+For large $\tau$:
+\begin{align*}
+    \sum_{k>0} \ln(1+(e^{2i\theta}-1) p_k) & = \sum_{k>0} \ln\left(1+e^{-\left(\frac{2\pi J\tau \sin^2 (k)}{\hbar}\right)} \cos^2 \left(\frac{k}{2}\right) \sum_{m=1}^{\infty} \frac{(2i\theta)^m}{m!}\right)   \\
+                                           & \approx \ln\left(1+e^{-\left(\frac{2\pi J\tau \sin^2 (\pi/N)}{\hbar}\right)} \cos^2 \left(\frac{\pi}{2N}\right) \sum_{m=1}^{\infty} \frac{(2i\theta)^m}{m!}\right)
+\end{align*}
+\[
+    = \sum_{p=1}^{\infty} \left(\frac{-1^{p+1}}{p}\right) \left(\left(\sum_{m=1}^{\infty} \frac{(2i\theta)^m}{m!}\right) e^{-\left(\frac{2\pi J\tau \sin^2 (\pi/N)}{\hbar}\right)} \cos^2 \left(\frac{\pi}{2N}\right)\right)^p = \sum_{p=1}^{\infty} \frac{(i\theta)^p}{p!} \kappa_p
+\]
+\[
+    \kappa_1 = 2e^{-\left(\frac{2\pi J\tau \sin^2 (\pi/N)}{\hbar}\right)} \cos^2 \left(\frac{\pi}{2N}\right)
+\]
+\[
+    \kappa_2 = 4e^{-\left(\frac{2\pi J\tau \sin^2 (\pi/N)}{\hbar}\right)} \cos^2 \left(\frac{\pi}{2N}\right) - 4e^{-\left(\frac{4\pi J\tau \sin^2 (\pi/N)}{\hbar}\right)} \cos^4 \left(\frac{\pi}{2N}\right) \approx 2\kappa_1
+\]
+
+\[
+    p_k(k, \tau) \approx e^{-f(k,\tau)} \cos^2 \left(\frac{k}{2}\right)
+\]
+
+\[
+    f(k, \tau \ll 1) \approx 16.6\tau \sin^2 \left(\frac{k}{2}\right)
+\]
+
+\section*{Thermal description of the Ising model}
+The energy of the Ising model is (up to a constant)
+\[
+    H = 2J \sum d_i
+\]
+Where $d_i$ is a binary variable (0/1) signaling whether there's a kink at bond $i$. In a thermal state:
+\[
+    P(d_i) = \frac{Z \exp(-2J\beta d_i)}{1 + \exp(-2J \beta)} = \frac{\exp(-2J \beta d_i)}{1 + \exp(-2J \beta)}
+\]
+
+The average density of defects is then for $J=1$:
+\[
+    \langle d_i \rangle = \frac{e^{-2\beta}}{1 + e^{-2\beta}} \Rightarrow e^{-2\beta}(1-d) = d \Rightarrow \beta = -\frac{1}{2} \log\left(\frac{d}{1-d}\right)
+\]
+
+Thermal 1:
+\[
+    P(\text{kinks}=n) \propto \binom{N}{n} \left(\frac{e^{-2\beta}}{1 + e^{-2\beta}}\right)^n \left(\frac{1}{1 + e^{-2\beta}}\right)^{N-n} = \frac{1}{\text{Norm}} \frac{e^{-2n\beta}}{n!(N-n)!}
+\]
+\[
+    \sum_{n \text{ even}} \frac{e^{-2\beta n}}{n!(N-n)!} = \text{Norm}
+\]
+
+Thermal 2:
+\[
+    P(\text{kinks}=n) \propto \binom{N/2}{n/2} \left(\frac{e^{-2\beta}}{1 + e^{-2\beta}}\right)^n \left(\frac{1}{1 + e^{-2\beta}}\right)^{N-n} = \frac{1}{\text{Norm}} \frac{e^{-2n\beta}}{(n/2)!(N/2-n/2)!}
+\]
+\[
+    \sum_{n \text{ even}} \frac{e^{-2\beta n}}{n!(N-n)!} = \text{Norm}
+\]
+
+For thermal states:
+\[
+    M(t) = \frac{\sum_{n \text{ even}} e^{n(t-2\beta)} / n!(N-n)!}{\text{Norm}}
+\]
+\[
+    K(t) = \log(M(t)) = \log\left(\frac{\sum_{n \text{ even}} e^{n(t-2\beta)} / n!(N-n)!}{\text{Norm}}\right) = \log\left(\sum_{n \text{ even}} \frac{e^{n(t-2\beta)}}{n!(N-n)!}\right) - \log(\text{Norm})
+\]
+\[
+    \kappa_1 = \left. \frac{dK}{dt} \right|_{t=0} = \frac{1}{\text{Norm}} \frac{d}{dt} \left(\sum_{n \text{ even}} \frac{e^{n(t-2\beta)}}{n!(N-n)!}\right) = \frac{\sum_{n \text{ even}} \frac{ne^{-2\beta n}}{n!(N-n)!}}{\text{Norm}}
+\]
+\begin{align*}
+    \kappa_2 & = \left. \frac{d^2 K}{dt^2} \right|_{t=0}                                                                                                                                                                                                                                                                               \\
+             & = \frac{d}{dt} \left(\frac{\sum_{n \text{ even}} \frac{ne^{n(t-2\beta)}}{n!(N-n)!}}{\sum_{n \text{ even}} \frac{e^{n(t-2\beta)}}{n!(N-n)!}}\right)                                                                                                                                                                      \\
+             & = \left.\frac{\left(\sum_{n \text{ even}} \frac{n^2 e^{n(t-2\beta)}}{n!(N-n)!}\right) \left(\sum_{n \text{ even}} \frac{e^{n(t-2\beta)}}{n!(N-n)!}\right) - \left(\sum_{n \text{ even}} \frac{ne^{n(t-2\beta)}}{n!(N-n)!}\right)^2}{\left(\sum_{n \text{ even}} \frac{e^{n(t-2\beta)}}{n!(N-n)!}\right)^2}\right|_{t=0} \\
+             & = \frac{\left(\sum_{n \text{ even}} \frac{n^2 e^{-2\beta n}}{n!(N-n)!}\right)}{\text{Norm}} - \kappa_1^2
+\end{align*}
+\[
+    \frac{\kappa_2}{\kappa_1} = \frac{\left(\sum_{n \text{ even}} \frac{n^2 e^{-2\beta n}}{n!(N-n)!}\right)}{\left(\sum_{n \text{ even}} \frac{ne^{-2\beta n}}{n!(N-n)!}\right)} - \frac{\left(\sum_{n \text{ even}} \frac{ne^{-2\beta n}}{n!(N-n)!}\right)}{\left(\sum_{n \text{ even}} \frac{e^{-2\beta n}}{n!(N-n)!}\right)}
+\]
+
+\begin{align*}
+    \text{For small } \tau & : d \rightarrow 0.5 \Rightarrow \beta \rightarrow 0                                                                                                                                                                                                                                          \\
+    \Rightarrow \kappa_1   & = \left\{ \begin{aligned}
+                                            & \frac{-\left((1 - e^{-2 b})^N  + (e^{-2 b}  + 1)^N  + e^{2 b}  ((1 - e^{-2 b})^N  - (e^{-2 b}  + 1)^N )\right)}{2 (e^{4 b}  - 1)(N - 1)!} \\
+                                            & \times \left(\frac{(1-e^{-2b})^N+(1+e^{-2b})^N}{2N!}\right)^{-1}
+                                       \end{aligned} \right. \\
+                           & \rightarrow \left\{ \begin{aligned}
+                                                      & \frac{-\left((e^{-2 b}  + 1)^N  + e^{2 b}  (- (e^{-2 b}  + 1)^N )\right)}{2 (e^{4 b}  - 1)(N - 1)!} \\
+                                                      & \times \left(\frac{(1+e^{-2b})^N}{2N!}\right)^{-1}
+                                                 \end{aligned} \right.                                                                         \\
+                           & = \left\{ \begin{aligned}
+                                            & \frac{-( 2^N- e^{2 b}  2^N)}{2 (e^{4 b}  - 1)(N - 1)!} \\
+                                            & \times \left(\frac{2^N}{2N!}\right)^{-1}
+                                       \end{aligned} \right.                                                                                                                                                                            \\
+                           & = \left\{ \begin{aligned}
+                                            & \frac{(2^N (e^{2 b}-1))}{2 (e^{4 b}  - 1)(N - 1)!} \\
+                                            & \times \left(\frac{2^N}{2N!}\right)^{-1}
+                                       \end{aligned} \right.                                                                                                                                                                                \\
+                           & = \frac{2^N}{2 (e^{2b}+1)(N - 1)!} \left(\frac{2^N}{2N!}\right)^{-1} = \frac{N!}{2(N - 1)!}  = \frac{N}{2}.
+\end{align*}
+
+
+
+\begin{align*}
+    \kappa_2 & = \frac{1}{2(e^{-4\beta}-1)^2 (N-1)!} \left(e^{6\beta} ((1+e^{-2\beta} )^N-(1-e^{-2\beta} )^N ) + e^{4\beta} ((1+e^{-2\beta} )^N+(1-e^{-2\beta} )^N )(N-2) \right. \\
+             & \left. + N((1+e^{-2\beta} )^N+(1-e^{-2\beta} )^N ) + e^{2\beta} ((1-e^{-2\beta} )^N-(1+e^{-2\beta} )^N )(2N-1) \right)                                             \\
+             & \left(\frac{(1-e^{-2b})^N+(1+e^{-2b})^N}{2N!}\right)^{-1} - (\kappa_1 )^2                                                                                          \\
+             & \rightarrow \frac{1}{2(e^{-4\beta}-1)^2 (N-1)!} \left(e^{6\beta} (2^N ) + e^{4\beta} (2^N )(N-2) + N(2^N ) + e^{2\beta} (-2^N )(2N-1) \right)                      \\
+             & \left(\frac{2^N}{2N!}\right)^{-1} - (\kappa_1 )^2                                                                                                                  \\
+             & = \frac{N(e^2\beta-1)^2 (e^2\beta+N)}{(e^{-4\beta}-1)^2} - (\kappa_1 )^2                                                                                           \\
+             & = \frac{Ne^{8\beta} (e^2\beta+N)}{(e^{2\beta}+1)^2} - (\kappa_1 )^2                                                                                                \\
+             & = N(1+N)/4-(N/2)^2=N/4, \, \kappa_2/\kappa_1 \rightarrow 0.5.
+\end{align*}
+
+\begin{align*}
+    \text{For large } \tau & : d \rightarrow 0 \Rightarrow \beta \rightarrow \infty \Rightarrow \kappa_1 \rightarrow \frac{(2e^{-4\beta})/2(N-2)!}{1/(N)!} = N(N-1) e^{-4\beta},           \\
+    \kappa_2               & \rightarrow \frac{(4e^{-4\beta})/2(N-2)!}{1/(N)!} - (N(N-1) e^{-4\beta})^2 = 2\kappa_1-\kappa_1^2, \, \kappa_2/\kappa_1 \rightarrow 2-\kappa_1 \rightarrow 2.
+\end{align*}
+
+\begin{align*}
+    \text{For } N \rightarrow \infty               & :                                                                                                                   \\
+    \sum_{n \, \text{even}} e^{-2\beta n}/n!(N-n)! & = \frac{1}{N!} \sum_{n=0}^{N/2} e^{-4\beta n} \binom{N}{2n}                                                         \\
+                                                   & = \frac{1}{2N!} \left(\sum_{n=0}^N (-e^{-2\beta})^n \binom{N}{n} + \sum_{n=0}^N (e^{-2\beta})^n \binom{N}{n}\right) \\
+                                                   & = \frac{(1-e^{-2b})^N+(1+e^{-2b})^N}{2N!} \rightarrow \frac{(1+e^{-2\beta})^N}{2N!}.
+\end{align*}
+
+\begin{align*}
+    \sum_{n \, \text{even}} ne^{-2\beta n}/n!(N-n)! & = -\frac{(1 - e^{-2 b})^N  + (e^{-2 b}  + 1)^N  + e^{2 b}  ((1 - e^{-2 b})^N  - (e^{-2 b}  + 1)^N )}{2 (e^{4 b}  - 1)(N - 1)!} \\
+                                                    & \rightarrow \frac{(e^{-2 b}  + 1)^N (e^{2 b}-1)}{2 (e^{4 b}  - 1)(N - 1)! }                                                    \\
+                                                    & = \frac{(e^{-2 b}  + 1)^N}{2 (e^{2b}+ 1)(N - 1)! }.
+\end{align*}
+
+\begin{align*}
+    \kappa_1 & = \frac{\sum_{n \, \text{even}} ne^{-2\beta n}/n!(N-n)!}{\sum_{n \, \text{even}} e^{-2\beta n}/n!(N-n)! } \\
+             & \rightarrow \frac{(e^{-2 b}  + 1)^N 2N!}{2 (e^{2b}+ 1)(N - 1)!(1+e^{-2\beta})^N  }                        \\
+             & = \frac{N}{1+e^{2\beta}} = Nd.
+\end{align*}
+\begin{align*}
+     & \sum_{\substack{n                                                                                                                                                                      \\ \text{even}}} \frac{n^2 e^{-2\beta n}}{n!(N-n)!} = \frac{1}{2(e^{-4\beta}-1)^2 (N-1)!} \Biggl(e^{6\beta} ((1+e^{-2\beta})^N-(1-e^{-2\beta})^N) \\
+     & \qquad + e^{4\beta} ((1+e^{-2\beta})^N+(1-e^{-2\beta})^N)(N-2) + N((1+e^{-2\beta})^N+(1-e^{-2\beta})^N)                                                                                \\
+     & \qquad + e^{2\beta} ((1-e^{-2\beta})^N-(1+e^{-2\beta})^N)(2N-1) \Biggr)                                                                                                                \\
+     & \rightarrow \frac{e^{6\beta} ((1+e^{-2\beta})^N) + e^{4\beta} ((1+e^{-2\beta})^N)(N-2) + N((1+e^{-2\beta})^N) + e^{2\beta} (-(1+e^{-2\beta})^N)(2N-1)}{2(e^{4\beta}-1)^2 (N-1)!}       \\
+     & = \frac{(1+e^{-2\beta})^N (N+e^{2\beta})}{2(1+e^{2\beta})^2 (N-1)!}                                                                                                                    \\
+     & \kappa_2 = \left(\frac{(1+e^{-2\beta})^N (N+e^{2\beta})}{2(1+e^{2\beta})^2 (N-1)!}\right) \bigg/ \left(\frac{(1+e^{-2\beta})^N}{2N!}\right) - \left(\frac{N}{1+e^{2\beta}}\right)^2    \\
+     & = \frac{Ne^{2\beta}}{(1+e^{2\beta})^2} = Nd(1-d)                                                                                                                                       \\
+     & \frac{\kappa_2}{\kappa_1} = \left(\frac{\sum_{\substack{n                                                                                                                              \\ \text{even}}} \frac{n^2 e^{-2\beta n}}{n!(N-n)!}}{\sum_{\substack{n \\ \text{even}}} \frac{ne^{-2\beta n}}{n!(N-n)!}}\right) - \left(\frac{\sum_{\substack{n \\ \text{even}}} \frac{ne^{-2\beta n}}{n!(N-n)!}}{\sum_{\substack{n \\ \text{even}}} \frac{e^{-2\beta n}}{n!(N-n)!}}\right) \\
+     & \rightarrow \left(\frac{(1+e^{-2\beta})^N (N+e^{2\beta})}{2(1+e^{2\beta})^2 (N-1)!}\right) \bigg/ \left(\frac{(e^{-2 b} + 1)^N}{2 (e^{2b}+ 1)(N - 1)!}\right) - \frac{N}{1+e^{2\beta}} \\
+     & = \frac{1}{1+e^{-2\beta}} = 1-d \approx 1- \frac{1}{2\pi \sqrt{(\hbar/2J\tau)}} \approx 1-0.1125\tau^{-1/2}.
+\end{align*}
+
+\section*{Notebook}
+\begin{dmath}
+2J\sum_{k>0} \left(g(t) \sin(k) (c_k^\dagger c_{-k}^\dagger + c_{-k} c_k) 
++ (1-g(t)-g(t)\cos(k))(c_k^\dagger c_k - c_{-k} c_{-k}^\dagger)\right)
+\approx 
+2J\sum_{k>0} \left(g(t) \sin(k) (( \langle c_k^\dagger \rangle \langle c_{-k}^\dagger \rangle + \langle c_k^\dagger \rangle c_{-k}^\dagger 
++ \langle c_{-k}^\dagger \rangle c_k^\dagger)+ c_{-k} c_k) 
++ (1-g(t)-g(t)\cos(k))(c_k^\dagger c_k - c_{-k} c_{-k}^\dagger)\right)
+\end{dmath}
+\end{document}
