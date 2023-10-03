@@ -88,7 +88,7 @@ def p_k_analytic(tau, k):
     return np.exp(-2*np.pi*tau*(k**2))*(np.cos(k/2)**2)
 
 def ln_P_tilda_func(theta, pks):
-    return np.sum(np.log(1 + pks * (np.exp(1j * theta) - 1)))
+    return np.sum(np.log(1 + pks * (np.exp(1j * theta * 2) - 1)))
 
 def integrand_func(theta, pks, d):
     return np.exp(ln_P_tilda_func(theta, pks) - 1j * theta * d)
