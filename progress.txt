@@ -1,0 +1,9 @@
+1. 17/03/2024 - 
+I have searched for a difference between a maximal mixed state and a pure X state for the kink calculation and there is no difference.
+That means that i should come back to the same values after the maximal noise is applied.
+My code seams to take me from periodic to open boundary conditions and its obviously wrong.
+why if for every k the probability is 0.5 , the kink prob is not the same?
+
+2. 31/03/2024 - 
+I have found the error in the code. I didnt write the correct noise matrix (dissipator).
+I have to try run it again and see if the results are correct.
