@@ -7,3 +7,10 @@ why if for every k the probability is 0.5 , the kink prob is not the same?
 2. 31/03/2024 - 
 I have found the error in the code. I didnt write the correct noise matrix (dissipator).
 I have to try run it again and see if the results are correct.
+
+3. 12/05/2024 -
+The wide MMS is actually a steady state of both the hamiltonian comutator and the dissipator.
+We should understand why its make sense and does it even possible to get back into the maximal mixed state with any noise.
+- write our findings so far
+- solve the analitycal derivation with parameters (g and noise seperately)
+- run qiskit for small system

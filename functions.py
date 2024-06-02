@@ -37,10 +37,11 @@ def dag(matrix):
 
 # Parameters
 hbar = 1.0   # in natural units
-epsilon = 1e-8
+epsilon = 1e-6
 data_file = 'data.csv'
 sigX = np.array([[0, 1], [1, 0]])
 sigZ = np.array([[1, 0], [0, -1]])
+dt = 0.01
 
 def g0(t, tau):
     return t/tau if tau > 0 else 0
@@ -60,22 +61,23 @@ def V_func(k):
 
 def Dissipator(k, rho, w):
     V = V_func(k)
-    V_dag = dag(V)
-    term1 = V * rho * V_dag
-    term2 = 0.5 * V_dag * V * rho
-    term3 = 0.5 * rho * V_dag * V
+    # V_dag = np.conjugate(V.T)= V  # Hermitian conjugate of V
+    term1 = V @ rho @ V
+    term2 = 0.5 * (V @ V @ rho)
+    term3 = 0.5 * (rho @ V @ V)
     D = w**2 * (term1 - term2 - term3)
     return D
 
 def psi_dt(t, psi,  tau, k):
     return -1j * np.dot(H0(t, tau, k), psi)
 
+
 def rho_dt(t, rho, tau, k, w):
     rho = rho.reshape(2,2)
-    H = H0(t, tau, k)
-    D = Dissipator(k, rho, w)
+    H = H0(t, tau, k) + w[int((t // dt))] * V_func(k)
+    #D = Dissipator(k, rho, w)
     U = -1j * commutator(H, rho)
-    rho_dot = U + D
+    rho_dot = U #+ D
     return rho_dot.flatten()
 
 def lz_time_evolution_single_k(k, t_max, tau):
