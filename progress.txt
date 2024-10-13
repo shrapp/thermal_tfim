@@ -14,3 +14,15 @@ We should understand why its make sense and does it even possible to get back in
 - write our findings so far
 - solve the analitycal derivation with parameters (g and noise seperately)
 - run qiskit for small system
+
+4. 04/06/2024 -
+I have found that the moments of the Kinks number operator are changing with the correlation of k+ and k-.
+- Now i would like to find a noise that will get me back to the maximal mixed state. (maybe only numerically)
+- lets try to go back to the thermal state goal.
+
+5. 19/09/2024 -
+- Last time we have spoke about the research we suggested to use the variance as a measure for the noise.
+- We suggested to try a exponential decay from rho to maximal mixed state.
+- Lets plot the Varience as a function of t for noisy simulation and for depolarization model - e^(-a*t)*rho + (1-e^(-a*t))*I/2^n
+- Lets try to fit with ther mean and look what happwns to the variance.
+- 2 plots (Varience and mean) for the two models
