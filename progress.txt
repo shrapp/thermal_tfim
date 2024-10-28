@@ -26,3 +26,10 @@ I have found that the moments of the Kinks number operator are changing with the
 - Lets plot the Varience as a function of t for noisy simulation and for depolarization model - e^(-a*t)*rho + (1-e^(-a*t))*I/2^n
 - Lets try to fit with ther mean and look what happwns to the variance.
 - 2 plots (Varience and mean) for the two models
+
+6. 28/10/2024 -
+- I have trouble starting implementing my new model.
+- lets try to plan small steps to get to the goal.
+- a. write the new model explicitly
+- b. define each part of the model and write the code for it
+- c. run the model for small system and check if the results are as expected
