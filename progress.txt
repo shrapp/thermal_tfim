@@ -33,3 +33,8 @@ I have found that the moments of the Kinks number operator are changing with the
 - a. write the new model explicitly
 - b. define each part of the model and write the code for it
 - c. run the model for small system and check if the results are as expected
+
+7. 30/10/2024 - 
+- I have written the new model explicitly.
+- I have run the model for small system and the results are kind of what i expected.
+- I dont exectly have a vision of what i want to do next.
