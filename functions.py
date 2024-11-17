@@ -1,11 +1,11 @@
 import ast
+from concurrent.futures import ThreadPoolExecutor
 import logging
 from multiprocessing import Lock, Pool, Process
 import time
 from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
-from qiskit import QuantumCircuit
 import scipy
 from scipy.integrate import quad, solve_ivp
 from scipy.special import gammaln, logsumexp
@@ -15,6 +15,7 @@ from qiskit_aer.noise import NoiseModel
 from qiskit_aer import AerSimulator
 from collections import defaultdict
 from qiskit_aer.noise.errors import amplitude_damping_error, phase_damping_error, depolarizing_error
+from joblib import Parallel, delayed
 
 logging.basicConfig(filename='logger.log', level=logging.INFO, format='%(asctime)s %(message)s')
 
@@ -45,7 +46,7 @@ def dag(matrix):
 
 # Parameters
 hbar = 1.0   # in natural units
-epsilon = 1e-6
+epsilon = 1e-7
 data_file = 'data.csv'
 sigX = np.array([[0, 1], [1, 0]])
 sigZ = np.array([[1, 0], [0, -1]])
@@ -62,30 +63,28 @@ def H0(t, tau, k):
     return H0
 
 def V_func(k):
-    v_x = 2 * np.sin(k)
     v_z = -2 * (np.cos(k) + 1)
+    v_x = 2 * np.sin(k)
     V_matrix = v_z * sigZ + v_x * sigX
     return V_matrix
 
 def Dissipator(k, rho, w):
     V = V_func(k)
-    # V_dag = np.conjugate(V.T)= V  # Hermitian conjugate of V
     term1 = V @ rho @ V
-    term2 = 0.5 * (V @ V @ rho)
-    term3 = 0.5 * (rho @ V @ V)
-    D = w**2 * (term1 - term2 - term3)
+    term3 = -0.5 * (V @ V @ rho)
+    term2 = -0.5 * (rho @ V @ V)
+    D = w**2 * (term1 + term2 + term3)
     return D
 
 def psi_dt(t, psi,  tau, k):
     return -1j * np.dot(H0(t, tau, k), psi)
 
-
 def rho_dt(t, rho, tau, k, w):
     rho = rho.reshape(2,2)
-    H = H0(t, tau, k) + w[int((t // dt))] * V_func(k)
-    #D = Dissipator(k, rho, w)
+    H = H0(t, tau, k) # + w[int((t // dt))] * V_func(k)
+    D = Dissipator(k, rho, w)
     U = -1j * commutator(H, rho)
-    rho_dot = U #+ D
+    rho_dot = U + D
     return rho_dot.flatten()
 
 def lz_time_evolution_single_k(k, t_max, tau):
@@ -118,7 +117,7 @@ def calc_pk(ks, tau):
     # calculate the probabilities for each k
     pks = np.array([np.abs(np.dot(np.array([np.sin(k/2), np.cos(k/2)]), result.y[:,-1]/np.linalg.norm(result.y[:,-1])))**2 for k ,result in zip(ks, results)])
     # remove valuse that are too small
-    return  np.where(pks < epsilon/100, 0, pks)
+    return np.where(pks < epsilon/100, 0, pks)
 
 def calk_noisy_pk(ks, tau, w):
     # calculate the time evolution for each k
@@ -126,7 +125,7 @@ def calk_noisy_pk(ks, tau, w):
     # calculate the probabilities for each k
     pks = np.array([np.abs(np.dot(np.array([np.sin(k/2), np.cos(k/2)]), np.dot(result.y[:,-1].reshape(2,2), np.array([[np.sin(k/2)], [np.cos(k/2)]]))))[0] for k ,result in zip(ks, results)])
     # remove valuse that are too small
-    return  np.where(pks < epsilon/100, 0, pks)
+    return np.where(pks < epsilon/100, 0, pks)
      
 
 def k_f(N):
@@ -241,12 +240,10 @@ def calc_data(Ns, taus, noises):
     for p in processes:
         p.join()
         
-# TODO: fix this function
-# def calculate_pk(N, tau, noise, df):
-#     ks = k_f(N)
-#     z = np.matrix([[1, 0], [0, -1]])
-#     pks_numeric = calk_noisy_pk(ks, tau, noise, z)
-#     return {'probability': str(pks_numeric.tolist())}
+def calculate_pk(N, tau, noise):
+    ks = k_f(N)
+    pks_numeric = calk_noisy_pk(ks, tau, noise)
+    return {'probability': str(pks_numeric.tolist())}
 
 def calculate_numeric(N, tau, noise, df):
     pks_numeric = np.array(ast.literal_eval(df[(df['type'] == 'pk') & (df['N'] == N) & (df['tau'] == tau) & (df['noise'] == noise)]['probability'].iloc[0])).flatten()
@@ -352,225 +349,46 @@ def calc_data_single(N, tau, lock, noise):
     
     logging.info(f'Finished calculating data for N={N}, tau={tau}, noise={noise}')
     
-def plot_model_comparisons(dephasing_param, qubits, total_numsots=100000, steps_max=51, num_circuits_per_step_noisy=50, damping=0.0, depolarizing=0.0, angle_noise=0.0, fit_gamma='mean'):
-    # Assuming calc_kinks_probability, calc_kinks_mean, and calc_kinks_variance are defined elsewhere
-
-    steps_list = [i for i in range(0, steps_max)]
-
-    # Simulate noisy TFIM circuits
-    numshots = total_numsots // num_circuits_per_step_noisy
-    results_dephasing = simulate_tfim_circuits(qubits=qubits, numshots=numshots, steps_list=steps_list, num_circuits_per_step=num_circuits_per_step_noisy, dephazing=dephasing_param)
-    
-    # Simulate global noisy TFIM circuits
-    results_global_noise = simulate_tfim_circuits(qubits=qubits, numshots=numshots,  steps_list=steps_list, num_circuits_per_step=num_circuits_per_step_noisy, angle_noise=angle_noise)
-    
-    # Simulate ideal TFIM circuits
-    results_sim = simulate_tfim_circuits(qubits=qubits, numshots=total_numsots,  steps_list=steps_list)
-
-    # Calculate probabilities, means, variances, and ratios for the dephasing model
-    probs_dephasing = {s: calc_kinks_probability(d) for s, d in results_dephasing.items()}
-    means_dephasing = {s: calc_kinks_mean(d) for s, d in probs_dephasing.items()}
-    variances_dephasing = {s: calc_kinks_variance(d) for s, d in probs_dephasing.items()}
-    ratios_dephasing = {s: variances_dephasing[s] / means_dephasing[s] for s in probs_dephasing.keys()}
-    
-    # Calculate probabilities, means, variances, and ratios for the global noise model
-    probs_global_noisy = {s: calc_kinks_probability(d) for s, d in results_global_noise.items()}
-    means_global_noisy = {s: calc_kinks_mean(d) for s, d in probs_global_noisy.items()}
-    variances_global_noisy = {s: calc_kinks_variance(d) for s, d in probs_global_noisy.items()}
-    ratios_global_noisy = {s: variances_global_noisy[s] / means_global_noisy[s] for s in probs_global_noisy.keys()}
-
-    # Calculate probabilities, means, variances, and ratios for the depolarizing model
-    exponential_decay = lambda steps, gamma: np.exp(-gamma * steps)
-
-    # Calculate probabilities, means, variances, and ratios for the sim data
-    probs_sim = {s: calc_kinks_probability(d) for s, d in results_sim.items()}
-    means_sim = {s: calc_kinks_mean(d) for s, d in probs_sim.items()}
-    variances_sim = {s: calc_kinks_variance(d) for s, d in probs_sim.items()}
-    ratios_sim = {s: variances_sim[s] / means_sim[s] for s in probs_sim.keys()}
-
-    def depolarizing_error(gamma, probs, static_prob):
-        return {s: (1 - exponential_decay(s, gamma)) * static_prob + exponential_decay(s, gamma) * p for s, p in probs.items()}
-
-    # Function to find optimal gamma such that means_dephasing and means_depolarizing are closest
-    def objective_function_mean(gamma):
-        means_depolarizing = depolarizing_error(gamma, means_sim, qubits / 2)
-        diff = np.sum([(means_dephasing[s] - means_depolarizing[s]) ** 2 for s in means_dephasing.keys()])
-        return diff
-
-    # Function to find optimal gamma such that variances_dephasing and variances_depolarizing are closest
-    def objective_function_variance(gamma):
-        variances_depolarizing = depolarizing_error(gamma, variances_sim, qubits / 4)
-        diff = np.sum([(variances_dephasing[s] - variances_depolarizing[s]) ** 2 for s in variances_dephasing.keys()])
-        return diff
-
-    # Optimize gamma for mean
-    result_mean = scipy.optimize.minimize_scalar(objective_function_mean, bounds=(0, 1), method='bounded')
-    optimal_gamma_mean = result_mean.x
-
-    # Optimize gamma for variance
-    result_variance = scipy.optimize.minimize_scalar(objective_function_variance, bounds=(0, 1), method='bounded')
-    optimal_gamma_variance = result_variance.x
-
-    # Choose which gamma to use based on the argument
-    if fit_gamma == 'mean':
-        gamma = optimal_gamma_mean
-    elif fit_gamma == 'variance':
-        gamma = optimal_gamma_variance
-    else:
-        raise ValueError("fit_gamma must be either 'mean' or 'variance'")
-
-    means_depolarizing = depolarizing_error(gamma, means_sim, qubits / 2)
-    variances_depolarizing = depolarizing_error(gamma, variances_sim, qubits / 4)
-    ratios_depolarizing = {s: variances_depolarizing[s] / means_depolarizing[s] for s in steps_list}
-
-    # Determine common x and y limits
-    x_limits = [min(min(variances_dephasing.keys()), min(variances_depolarizing.keys()), min(variances_global_noisy.keys())), 
-                max(max(variances_dephasing.keys()), max(variances_depolarizing.keys()), max(variances_global_noisy.keys()))]
-
-    y_limits_variance = [min(min(variances_dephasing.values()), min(variances_depolarizing.values()), min(variances_sim.values()), min(variances_global_noisy.values())), 
-                         max(max(variances_dephasing.values()), max(variances_depolarizing.values()), max(variances_sim.values()), max(variances_global_noisy.values()))]
-
-    y_limits_mean = [min(min(means_dephasing.values()), min(means_depolarizing.values()), min(means_sim.values()), min(means_global_noisy.values())), 
-                     max(max(means_dephasing.values()), max(means_depolarizing.values()), max(means_sim.values()), max(means_global_noisy.values()))]
-
-    y_limits_ratio = [min(min(ratios_dephasing.values()), min(ratios_depolarizing.values()), min(ratios_sim.values()), min(ratios_global_noisy.values())), 
-                      max(max(ratios_dephasing.values()), max(ratios_depolarizing.values()), max(ratios_sim.values()), max(ratios_global_noisy.values()))]
-
-    # Create subplots for individual models
-    fig, axs = plt.subplots(3, 4, figsize=(25, 15))
-
-    # Plotting the different models for variance, mean, and ratio
-
-    # Variance
-    models_variance = [
-        (variances_dephasing, 'Variance (Dephasing, param={})'.format(dephasing_param)),
-        (variances_depolarizing, 'Variance (Depolarizing, gamma={:.4f})'.format(optimal_gamma_variance)),
-        (variances_sim, 'Variance (Sim)'),
-        (variances_global_noisy, 'Variance (Global Noise, param={})'.format(angle_noise))
-    ]
-
-    for idx, (data, label) in enumerate(models_variance):
-        axs[0, idx].plot(data.keys(), data.values(), 'o', label=label)
-        axs[0, idx].set_title('Variance per Step')
-        axs[0, idx].set_xlabel('Steps')
-        axs[0, idx].set_ylabel('Variance')
-        axs[0, idx].set_xlim(x_limits)
-        axs[0, idx].set_ylim(y_limits_variance)
-        axs[0, idx].legend()
-
-    # Mean
-    models_mean = [
-        (means_dephasing, 'Mean (Dephasing, param={})'.format(dephasing_param)),
-        (means_depolarizing, 'Mean (Depolarizing, gamma={:.4f})'.format(optimal_gamma_mean)),
-        (means_sim, 'Mean (Sim)'),
-        (means_global_noisy, 'Mean (Global Noise, param={})'.format(angle_noise))
-    ]
-
-    for idx, (data, label) in enumerate(models_mean):
-        axs[1, idx].plot(data.keys(), data.values(), 'o', label=label)
-        axs[1, idx].set_title('Mean per Step')
-        axs[1, idx].set_xlabel('Steps')
-        axs[1, idx].set_ylabel('Mean')
-        axs[1, idx].set_xlim(x_limits)
-        axs[1, idx].set_ylim(y_limits_mean)
-        axs[1, idx].legend()
-
-    # Variance/Mean Ratio
-    models_ratio = [
-        (ratios_dephasing, 'Variance/Mean (Dephasing, param={})'.format(dephasing_param)),
-        (ratios_depolarizing, 'Variance/Mean (Depolarizing, gamma={:.4f})'.format(optimal_gamma_variance)),
-        (ratios_sim, 'Variance/Mean (Sim)'),
-        (ratios_global_noisy, 'Variance/Mean (Global Noise, param={})'.format(angle_noise))
-    ]
-
-    for idx, (data, label) in enumerate(models_ratio):
-        axs[2, idx].plot(data.keys(), data.values(), 'o', label=label)
-        axs[2, idx].set_title('Variance/Mean Ratio per Step')
-        axs[2, idx].set_xlabel('Steps')
-        axs[2, idx].set_ylabel('Variance/Mean Ratio')
-        axs[2, idx].set_xlim(x_limits)
-        axs[2, idx].set_ylim(y_limits_ratio)
-        axs[2, idx].legend()
-
-    # Adjust layout
-    plt.tight_layout()
-    plt.show()
-
-    # Create comparison plots for all models combined
-    fig, axs = plt.subplots(3, 1, figsize=(10, 20))
-
-    # Add a title to the whole figure
-    fig.suptitle('Comparison of Dephasing, Depolarizing, Sim, and Global Models', fontsize=16)
-
-    # Plot Variance Comparison
-    axs[0].plot(variances_dephasing.keys(), variances_dephasing.values(), 'o', label=f'Variance (Dephasing, param={dephasing_param})')
-    axs[0].plot(variances_depolarizing.keys(), variances_depolarizing.values(), 'x', label=f'Variance (Depolarizing, gamma={optimal_gamma_variance:.4f})')
-    axs[0].plot(variances_sim.keys(), variances_sim.values(), '^', label='Variance (Sim)')
-    axs[0].plot(variances_global_noisy.keys(), variances_global_noisy.values(), 's', label=f'Variance (Global Noise, param={angle_noise})')
-    axs[0].set_title('Variance per Step')
-    axs[0].set_xlabel('Steps')
-    axs[0].set_ylabel('Variance')
-    axs[0].set_xlim(x_limits)
-    axs[0].set_ylim(y_limits_variance)
-    axs[0].legend()
-
-    # Plot Mean Comparison
-    axs[1].plot(means_dephasing.keys(), means_dephasing.values(), 'o', label=f'Mean (Dephasing, param={dephasing_param})')
-    axs[1].plot(means_depolarizing.keys(), means_depolarizing.values(), 'x', label=f'Mean (Depolarizing, gamma={optimal_gamma_mean:.4f})')
-    axs[1].plot(means_sim.keys(), means_sim.values(), '^', label='Mean (Sim)')
-    axs[1].plot(means_global_noisy.keys(), means_global_noisy.values(), 's', label=f'Mean (Global Noise, param={angle_noise})')
-    axs[1].set_title('Mean per Step')
-    axs[1].set_xlabel('Steps')
-    axs[1].set_ylabel('Mean')
-    axs[1].set_xlim(x_limits)
-    axs[1].set_ylim(y_limits_mean)
-    axs[1].legend()
-
-    # Plot Variance/Mean Ratio Comparison
-    axs[2].plot(ratios_dephasing.keys(), ratios_dephasing.values(), 'o', label=f'Variance/Mean (Dephasing, param={dephasing_param})')
-    axs[2].plot(ratios_depolarizing.keys(), ratios_depolarizing.values(), 'x', label=f'Variance/Mean (Depolarizing, gamma={optimal_gamma_variance:.4f})')
-    axs[2].plot(ratios_sim.keys(), ratios_sim.values(), '^', label='Variance/Mean (Sim)')
-    axs[2].plot(ratios_global_noisy.keys(), ratios_global_noisy.values(), 's', label=f'Variance/Mean (Global Noise, param={angle_noise})')
-    axs[2].set_title('Variance/Mean Ratio per Step')
-    axs[2].set_xlabel('Steps')
-    axs[2].set_ylabel('Variance/Mean Ratio')
-    axs[2].set_xlim(x_limits)
-    axs[2].set_ylim(y_limits_ratio)
-    axs[2].legend()
-
-    # Adjust layout
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust layout to make room for the title
-    plt.show()
     
 def generate_tfim_circuits(qubits, steps_list, num_circuits_per_step, angle_noise=0.0):
     start_time = time.time()
     
     circuits = []
-    for steps in steps_list:
-        base_angles = (np.pi/2) * np.arange(1, steps+1) / (steps+1)
-        alphas = -np.cos(base_angles)
-        betas = -np.sin(base_angles)
-        
-        noisy_alphas = np.outer(alphas, np.ones(num_circuits_per_step)) + angle_noise * np.random.randn(steps, num_circuits_per_step)
-        
-        for circuit_idx in range(num_circuits_per_step):
-            circuit = QuantumCircuit(qubits, qubits)
-            circuit.h(range(qubits))
-            
-            for step in range(steps):
-                beta = betas[step]
-                circuit.rz(beta, range(qubits))
-                
-                for i in range(qubits):
-                    j = (i + 1) % qubits
-                    circuit.cp(-2 * beta, i, j)
-                    circuit.rx(noisy_alphas[step, circuit_idx], i)
 
-            circuit.measure(range(qubits), range(qubits))
-            circuits.append(circuit)
-    
+    def generate_single_circuit(steps, circuit_idx, betas, noisy_alphas):
+        circuit = QuantumCircuit(qubits, qubits)
+        circuit.h(range(qubits))
+
+        for step in range(steps):
+            beta = betas[step]
+            circuit.rz(beta, range(qubits))
+
+            for i in range(qubits):
+                j = (i + 1) % qubits
+                circuit.cp(-2 * beta, i, j)
+                circuit.rx(noisy_alphas[step, circuit_idx], i)
+
+        circuit.measure(range(qubits), range(qubits))
+        return circuit
+
+    with ThreadPoolExecutor() as executor:
+        futures = []
+        for steps in steps_list:
+            base_angles = (np.pi / 2) * np.arange(1, steps + 1) / (steps + 1)
+            betas = -np.sin(base_angles)
+            noisy_base_angles = base_angles + angle_noise * np.random.randn(steps)
+            noisy_alphas = -np.cos(noisy_base_angles)
+            noisy_alphas = np.outer(noisy_alphas, np.ones(num_circuits_per_step))
+
+            for circuit_idx in range(num_circuits_per_step):
+                futures.append(executor.submit(generate_single_circuit, steps, circuit_idx, betas, noisy_alphas))
+
+        for future in futures:
+            circuits.append(future.result())
+
     print("Circuit generation time: {:.4f} seconds".format(time.time() - start_time))
     return circuits
+
 
 def simulate_tfim_circuits(qubits, numshots, steps_list, num_circuits_per_step=1, damping=0.0, dephazing=0.0, depolarizing=0.0, angle_noise=0.0):
     circuits = generate_tfim_circuits(qubits, steps_list, num_circuits_per_step, angle_noise)
@@ -590,7 +408,9 @@ def simulate_tfim_circuits(qubits, numshots, steps_list, num_circuits_per_step=1
     start_time = time.time()
     # Simulation
     simulator = AerSimulator(noise_model=noise_model)
-    transpiled_circuits = transpile(circuits, simulator)
+    with ThreadPoolExecutor() as executor:
+        futures = list(executor.map(lambda circuit: transpile(circuit, simulator), circuits))
+    transpiled_circuits = list(futures)
     print("Transpilation time: {:.4f} seconds".format(time.time() - start_time))
     
     start_time = time.time()
@@ -617,6 +437,7 @@ def simulate_tfim_circuits(qubits, numshots, steps_list, num_circuits_per_step=1
     
     return counts_by_steps
 
+
 def count_kinks(bitstring):
     return sum(1 for i in range(len(bitstring)) if bitstring[i] != bitstring[i-1])
 
@@ -638,3 +459,235 @@ def calc_kinks_variance(kinks_probability):
     mean_kinks = calc_kinks_mean(kinks_probability)
     total_variance = sum((k - mean_kinks)**2 * v for k, v in kinks_probability.items())
     return total_variance
+
+
+
+def plot_model_comparisons(dephasing_param, qubits, total_numsots=100000, steps_max=51, num_circuits_per_step_noisy=50, damping=0.0, depolarizing=0.0, angle_noise=0.0, numeric_noise=0.08, fit_gamma='mean'):
+    steps_list = [i for i in range(0, steps_max)]
+
+    # Simulate different models
+    results_dephasing, results_global_noise, results_sim = simulate_models(qubits, total_numsots, steps_list, num_circuits_per_step_noisy, dephasing_param, angle_noise)
+
+    # Calculate numeric model values
+    means_numeric, variances_numeric, ratios_numeric = calculate_numeric_model_parallel(qubits, numeric_noise, steps_max)
+
+    # Calculate probabilities, means, variances, and ratios for each model
+    means_dephasing, variances_dephasing, ratios_dephasing = calculate_model_statistics(results_dephasing, qubits)
+    means_global_noisy, variances_global_noisy, ratios_global_noisy = calculate_model_statistics(results_global_noise, qubits)
+    means_sim, variances_sim, ratios_sim = calculate_model_statistics(results_sim, qubits)
+
+    # Optimize gamma for depolarizing model
+    gamma = optimize_gamma(means_global_noisy, variances_global_noisy, means_sim, variances_sim, fit_gamma, qubits)
+    means_depolarizing, variances_depolarizing, ratios_depolarizing = calculate_depolarizing_model(gamma, means_sim, variances_sim, qubits)
+
+    # Plot the results
+    plot_individual_models(steps_list, means_dephasing, variances_dephasing, ratios_dephasing,
+                           means_depolarizing, variances_depolarizing, ratios_depolarizing,
+                           means_sim, variances_sim, ratios_sim,
+                           means_global_noisy, variances_global_noisy, ratios_global_noisy,
+                           means_numeric, variances_numeric, ratios_numeric,
+                           dephasing_param, angle_noise, numeric_noise, gamma)
+    plot_combined_models(steps_list, means_dephasing, variances_dephasing, ratios_dephasing,
+                         means_depolarizing, variances_depolarizing, ratios_depolarizing,
+                         means_sim, variances_sim, ratios_sim,
+                         means_global_noisy, variances_global_noisy, ratios_global_noisy,
+                         means_numeric, variances_numeric, ratios_numeric,
+                         dephasing_param, angle_noise, numeric_noise, gamma)
+
+def simulate_models(qubits, total_numsots, steps_list, num_circuits_per_step_noisy, dephasing_param, angle_noise):
+    numshots = total_numsots // num_circuits_per_step_noisy
+    results_dephasing = simulate_tfim_circuits(qubits=qubits, numshots=numshots, steps_list=steps_list, num_circuits_per_step=num_circuits_per_step_noisy, dephazing=dephasing_param)
+    results_global_noise = simulate_tfim_circuits(qubits=qubits, numshots=numshots, steps_list=steps_list, num_circuits_per_step=num_circuits_per_step_noisy, angle_noise=angle_noise)
+    results_sim = simulate_tfim_circuits(qubits=qubits, numshots=total_numsots, steps_list=steps_list)
+    return results_dephasing, results_global_noise, results_sim
+
+def calculate_numeric_model_parallel(qubits, numeric_noise, steps_max):
+    ks = k_f(qubits)
+    taus = np.linspace(0, 100, steps_max - 1)
+
+    def calculate_for_tau(tau):
+        pks_numeric = calk_noisy_pk(ks, tau, numeric_noise)
+        d_vals = np.arange(0, qubits + 1, 2)
+        num_probability_mass_function = calc_kink_probabilities(pks_numeric, d_vals)
+        mean = np.sum(num_probability_mass_function * d_vals)
+        second_moment = np.sum(num_probability_mass_function * d_vals ** 2)
+        variance = second_moment - mean ** 2
+        ratio = variance / (mean + epsilon)
+        return tau, mean, variance, ratio  # Replace 'step' with 'tau'
+
+    results = Parallel(n_jobs=-1)(delayed(calculate_for_tau)(tau) for tau in taus)
+
+    means_numeric = {step: mean for step, mean, _, _ in results}
+    variances_numeric = {step: variance for step, _, variance, _ in results}
+    ratios_numeric = {step: ratio for step, _, _, ratio in results}
+
+    return means_numeric, variances_numeric, ratios_numeric
+
+def calculate_model_statistics(results, qubits):
+    probs = {s: calc_kinks_probability(d) for s, d in results.items()}
+    means = {s: calc_kinks_mean(d) for s, d in probs.items()}
+    variances = {s: calc_kinks_variance(d) for s, d in probs.items()}
+    ratios = {s: variances[s] / (means[s] + epsilon) for s in probs.keys()}
+    return means, variances, ratios
+
+def optimize_gamma(means_global_noisy, variances_global_noisy, means_sim, variances_sim, fit_gamma, qubits):
+    exponential_decay = lambda steps, gamma: np.exp(-gamma * steps)
+
+    def depolarizing_error(gamma, probs, static_prob):
+        return {s: (1 - exponential_decay(s, gamma)) * static_prob + exponential_decay(s, gamma) * p for s, p in probs.items()}
+
+    def objective_function_mean(gamma):
+        means_depolarizing = depolarizing_error(gamma, means_sim, qubits / 2)
+        diff = np.sum([(means_global_noisy[s] - means_depolarizing[s]) ** 2 for s in means_global_noisy.keys()])
+        return diff
+
+    def objective_function_variance(gamma):
+        variances_depolarizing = depolarizing_error(gamma, variances_sim, qubits / 4)
+        diff = np.sum([(variances_global_noisy[s] - variances_depolarizing[s]) ** 2 for s in variances_global_noisy.keys()])
+        return diff
+
+    if fit_gamma == 'mean':
+        result = scipy.optimize.minimize_scalar(objective_function_mean, bounds=(0, 1), method='bounded')
+    elif fit_gamma == 'variance':
+        result = scipy.optimize.minimize_scalar(objective_function_variance, bounds=(0, 1), method='bounded')
+    else:
+        raise ValueError("fit_gamma must be either 'mean' or 'variance'")
+
+    return result.x
+
+def calculate_depolarizing_model(gamma, means_sim, variances_sim, qubits):
+    exponential_decay = lambda steps, gamma: np.exp(-gamma * steps)
+    depolarizing_error = lambda gamma, probs, static_prob: {s: (1 - exponential_decay(s, gamma)) * static_prob + exponential_decay(s, gamma) * p for s, p in probs.items()}
+    means_depolarizing = depolarizing_error(gamma, means_sim, qubits / 2)
+    variances_depolarizing = depolarizing_error(gamma, variances_sim, qubits / 4)
+    ratios_depolarizing = {s: variances_depolarizing[s] / (means_depolarizing[s] + epsilon) for s in means_sim.keys()}
+    return means_depolarizing, variances_depolarizing, ratios_depolarizing
+
+def plot_individual_models(steps_list, means_dephasing, variances_dephasing, ratios_dephasing,
+                           means_depolarizing, variances_depolarizing, ratios_depolarizing,
+                           means_sim, variances_sim, ratios_sim,
+                           means_global_noisy, variances_global_noisy, ratios_global_noisy,
+                           means_numeric, variances_numeric, ratios_numeric,
+                           dephasing_param, angle_noise, numeric_noise, gamma):
+    x_limits = [min(min(variances_dephasing.keys()), min(variances_depolarizing.keys()), min(variances_global_noisy.keys())), 
+                max(max(variances_dephasing.keys()), max(variances_depolarizing.keys()), max(variances_global_noisy.keys()))]
+
+    y_limits_variance = [min(min(variances_dephasing.values()), min(variances_depolarizing.values()), min(variances_sim.values()), min(variances_global_noisy.values()), min(variances_numeric.values())), 
+                         max(max(variances_dephasing.values()), max(variances_depolarizing.values()), max(variances_sim.values()), max(variances_global_noisy.values()), max(variances_numeric.values()))]
+
+    y_limits_mean = [min(min(means_dephasing.values()), min(means_depolarizing.values()), min(means_sim.values()), min(means_global_noisy.values()), min(means_numeric.values())), 
+                     max(max(means_dephasing.values()), max(means_depolarizing.values()), max(means_sim.values()), max(means_global_noisy.values()), max(means_numeric.values()))]
+
+    y_limits_ratio = [min(min(ratios_dephasing.values()), min(ratios_depolarizing.values()), min(ratios_sim.values()), min(ratios_global_noisy.values()), min(ratios_numeric.values())), 
+                      max(max(ratios_dephasing.values()), max(ratios_depolarizing.values()), max(ratios_sim.values()), max(ratios_global_noisy.values()), max(ratios_numeric.values()))]
+
+    fig, axs = plt.subplots(3, 5, figsize=(30, 15))
+
+    models_variance = [
+        (variances_dephasing, 'Variance (Dephasing, param={})'.format(dephasing_param)),
+        (variances_depolarizing, 'Variance (Depolarizing, gamma={:.4f})'.format(gamma)),
+        (variances_sim, 'Variance (Sim)'),
+        (variances_global_noisy, 'Variance (Global Noise, param={})'.format(angle_noise)),
+        (variances_numeric, 'Variance (Numeric, noise={})'.format(numeric_noise))
+    ]
+
+    for idx, (data, label) in enumerate(models_variance):
+        axs[1, idx].plot(data.keys(), data.values(), 'o', label=label)
+        axs[1, idx].set_title('Variance per Step')
+        axs[1, idx].set_xlabel('Steps')
+        axs[1, idx].set_ylabel('Variance')
+        axs[1, idx].set_xlim(x_limits)
+        axs[1, idx].set_ylim(y_limits_variance)
+        axs[1, idx].legend()
+
+    models_mean = [
+        (means_dephasing, 'Mean (Dephasing, param={})'.format(dephasing_param)),
+        (means_depolarizing, 'Mean (Depolarizing, gamma={:.4f})'.format(gamma)),
+        (means_sim, 'Mean (Sim)'),
+        (means_global_noisy, 'Mean (Global Noise, param={})'.format(angle_noise)),
+        (means_numeric, 'Mean (Numeric, noise={})'.format(numeric_noise))
+    ]
+
+    for idx, (data, label) in enumerate(models_mean):
+        axs[0, idx].plot(data.keys(), data.values(), 'o', label=label)
+        axs[0, idx].set_title('Mean per Step')
+        axs[0, idx].set_xlabel('Steps')
+        axs[0, idx].set_ylabel('Mean')
+        axs[0, idx].set_xlim(x_limits)
+        axs[0, idx].set_ylim(y_limits_mean)
+        axs[0, idx].legend()
+
+    models_ratio = [
+        (ratios_dephasing, 'Variance/Mean (Dephasing, param={})'.format(dephasing_param)),
+        (ratios_depolarizing, 'Variance/Mean (Depolarizing, gamma={:.4f})'.format(gamma)),
+        (ratios_sim, 'Variance/Mean (Sim)'),
+        (ratios_global_noisy, 'Variance/Mean (Global Noise, param={})'.format(angle_noise)),
+        (ratios_numeric, 'Variance/Mean (Numeric, noise={})'.format(numeric_noise))
+    ]
+
+    for idx, (data, label) in enumerate(models_ratio):
+        axs[2, idx].plot(data.keys(), data.values(), 'o', label=label)
+        axs[2, idx].set_title('Variance/Mean Ratio per Step')
+        axs[2, idx].set_xlabel('Steps')
+        axs[2, idx].set_ylabel('Variance/Mean Ratio')
+        axs[2, idx].set_xlim(x_limits)
+        axs[2, idx].set_ylim(y_limits_ratio)
+        axs[2, idx].legend()
+
+    plt.tight_layout(rect=(0, 0.03, 1, 0.95))
+    plt.show()
+
+def plot_combined_models(steps_list, means_dephasing, variances_dephasing, ratios_dephasing,
+                         means_depolarizing, variances_depolarizing, ratios_depolarizing,
+                         means_sim, variances_sim, ratios_sim,
+                         means_global_noisy, variances_global_noisy, ratios_global_noisy,
+                         means_numeric, variances_numeric, ratios_numeric,
+                         dephasing_param, angle_noise, numeric_noise, gamma):
+    x_limits = [min(min(variances_dephasing.keys()), min(variances_depolarizing.keys()), min(variances_global_noisy.keys())), 
+                max(max(variances_dephasing.keys()), max(variances_depolarizing.keys()), max(variances_global_noisy.keys()))]
+
+    y_limits_variance = [min(min(variances_dephasing.values()), min(variances_depolarizing.values()), min(variances_sim.values()), min(variances_global_noisy.values()), min(variances_numeric.values())), 
+                         max(max(variances_dephasing.values()), max(variances_depolarizing.values()), max(variances_sim.values()), max(variances_global_noisy.values()), max(variances_numeric.values()))]
+
+    y_limits_mean = [min(min(means_dephasing.values()), min(means_depolarizing.values()), min(means_sim.values()), min(means_global_noisy.values()), min(means_numeric.values())), 
+                     max(max(means_dephasing.values()), max(means_depolarizing.values()), max(means_sim.values()), max(means_global_noisy.values()), max(means_numeric.values()))]
+
+    y_limits_ratio = [min(min(ratios_dephasing.values()), min(ratios_depolarizing.values()), min(ratios_sim.values()), min(ratios_global_noisy.values()), min(ratios_numeric.values())), 
+                      max(max(ratios_dephasing.values()), max(ratios_depolarizing.values()), max(ratios_sim.values()), max(ratios_global_noisy.values()), max(ratios_numeric.values()))]
+
+    fig, axs = plt.subplots(3, 1, figsize=(10, 20))
+    fig.suptitle('Comparison of Dephasing, Depolarizing, Sim, Global, and Numeric Models', fontsize=16)
+
+    axs[1].plot(variances_dephasing.keys(), variances_dephasing.values(), 'o', label=f'Variance (Dephasing, param={dephasing_param})')
+    axs[1].plot(variances_depolarizing.keys(), variances_depolarizing.values(), 'x', label=f'Variance (Depolarizing, gamma={gamma:.4f})')
+    axs[1].plot(variances_sim.keys(), variances_sim.values(), '^', label='Variance (Sim)')
+    axs[1].plot(variances_global_noisy.keys(), variances_global_noisy.values(), 's', label=f'Variance (Global Noise, param={angle_noise})')
+    axs[1].plot(variances_numeric.keys(), variances_numeric.values(), 'd', label=f'Variance (Numeric, noise={numeric_noise})')
+    axs[1].set_title('Variance per Step')
+    axs[1].set_xlabel('Steps')
+    axs[1].set_ylabel('Variance')
+    axs[1].set_xlim(x_limits)
+    axs[1].set_ylim(y_limits_variance)
+    axs[1].legend()
+
+    axs[0].plot(means_dephasing.keys(), means_dephasing.values(), 'o', label=f'Mean (Dephasing, param={dephasing_param})')
+    axs[0].plot(means_depolarizing.keys(), means_depolarizing.values(), 'x', label=f'Mean (Depolarizing, gamma={gamma:.4f})')
+    axs[0].plot(means_sim.keys(), means_sim.values(), '^', label='Mean (Sim)')
+    axs[0].plot(means_global_noisy.keys(), means_global_noisy.values(), 's', label=f'Mean (Global Noise, param={angle_noise})')
+    axs[0].plot(means_numeric.keys(), means_numeric.values(), 'd', label=f'Mean (Numeric, noise={numeric_noise})')
+    axs[0].set_title('Mean per Step')
+    axs[0].set_xlabel('Steps')
+    axs[0].set_ylabel('Mean')
+    axs[0].set_xlim(x_limits)
+    axs[0].set_ylim(y_limits_mean)
+    axs[0].legend()
+
+    axs[2].plot(ratios_dephasing.keys(), ratios_dephasing.values(), 'o', label=f'Variance/Mean (Dephasing, param={dephasing_param})')
+    axs[2].plot(ratios_depolarizing.keys(), ratios_depolarizing.values(), 'x', label=f'Variance/Mean (Depolarizing, gamma={gamma:.4f})')
+    axs[2].plot(ratios_sim.keys(), ratios_sim.values(), '^', label='Variance/Mean (Sim)')
+    axs[2].plot(ratios_global_noisy.keys(), ratios_global_noisy.values(), 's', label=f'Variance/Mean (Global Noise, param={angle_noise})')
+    axs[2].plot(ratios_numeric.keys(), ratios_numeric.values(), 'd', label=f'Variance/Mean (Numeric, noise={numeric_noise})')
+    axs[2].set_title('Variance/Mean Ratio per Step')
+    axs[2].set_xlabel('Steps')
+    axs[2].set_ylabel('Variance/Mean Ratio')
+   
