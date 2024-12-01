@@ -1,5 +1,5 @@
 import ast
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 import logging
 from multiprocessing import Lock, Pool, Process
 import time
@@ -349,46 +349,100 @@ def calc_data_single(N, tau, lock, noise):
     
     logging.info(f'Finished calculating data for N={N}, tau={tau}, noise={noise}')
     
-    
+
+def generate_single_circuit(steps, circuit_idx, betas, alphas, qubits):
+    # Initialize the quantum circuit
+    circuit = QuantumCircuit(qubits, qubits)
+    circuit.h(range(qubits))  # Apply Hadamard gate to all qubits to create superposition
+
+    # Apply parameterized gates for each step
+    for step in range(steps):
+        beta = betas[step, circuit_idx]
+        circuit.rz(beta, range(qubits))  # Apply RZ rotation with angle beta to each qubit
+
+        # Apply controlled-phase and RX rotations
+        for i in range(qubits):
+            j = (i + 1) % qubits  # Neighboring qubit index
+            circuit.cp(-2 * beta, i, j)  # Controlled-phase rotation between neighboring qubits
+            circuit.rx(alphas[step, circuit_idx], i)  # RX rotation with noisy alpha
+
+    # Measure all qubits
+    circuit.measure(range(qubits), range(qubits))
+    return circuit
+
 def generate_tfim_circuits(qubits, steps_list, num_circuits_per_step, angle_noise=0.0):
     start_time = time.time()
-    
     circuits = []
 
-    def generate_single_circuit(steps, circuit_idx, betas, noisy_alphas):
-        circuit = QuantumCircuit(qubits, qubits)
-        circuit.h(range(qubits))
+    for steps in steps_list:
+        # Generate base angles and add noise
+        base_angles = (np.pi / 2) * np.arange(1, steps + 1) / (steps + 1)
+        base_angles = base_angles[:, np.newaxis] + angle_noise * np.random.randn(steps, num_circuits_per_step)
+        betas = -np.sin(base_angles)
+        alphas = -np.cos(base_angles)
 
-        for step in range(steps):
-            beta = betas[step]
-            circuit.rz(beta, range(qubits))
+        # Generate circuits without parallelism
+        for circuit_idx in range(num_circuits_per_step):
+            circuit = generate_single_circuit(steps, circuit_idx, betas, alphas, qubits)
+            circuits.append(circuit)
 
-            for i in range(qubits):
-                j = (i + 1) % qubits
-                circuit.cp(-2 * beta, i, j)
-                circuit.rx(noisy_alphas[step, circuit_idx], i)
-
-        circuit.measure(range(qubits), range(qubits))
-        return circuit
-
-    with ThreadPoolExecutor() as executor:
-        futures = []
-        for steps in steps_list:
-            base_angles = (np.pi / 2) * np.arange(1, steps + 1) / (steps + 1)
-            betas = -np.sin(base_angles)
-            noisy_base_angles = base_angles + angle_noise * np.random.randn(steps)
-            noisy_alphas = -np.cos(noisy_base_angles)
-            noisy_alphas = np.outer(noisy_alphas, np.ones(num_circuits_per_step))
-
-            for circuit_idx in range(num_circuits_per_step):
-                futures.append(executor.submit(generate_single_circuit, steps, circuit_idx, betas, noisy_alphas))
-
-        for future in futures:
-            circuits.append(future.result())
-
+    # Print the total time taken for circuit generation
     print("Circuit generation time: {:.4f} seconds".format(time.time() - start_time))
     return circuits
 
+    
+
+# def generate_single_circuit(steps, circuit_idx, betas, alphas, qubits):
+#     # Initialize the quantum circuit
+#     circuit = QuantumCircuit(qubits, qubits)
+#     circuit.h(range(qubits))  # Apply Hadamard gate to all qubits to create superposition
+
+#     # Apply parameterized gates for each step
+#     for step in range(steps):
+#         beta = betas[step, circuit_idx]
+#         circuit.rz(beta, range(qubits))  # Apply RZ rotation with angle beta to each qubit
+
+#         # Apply controlled-phase and RX rotations
+#         for i in range(qubits):
+#             j = (i + 1) % qubits  # Neighboring qubit index
+#             circuit.cp(-2 * beta, i, j)  # Controlled-phase rotation between neighboring qubits
+#             circuit.rx(alphas[step, circuit_idx], i)  # RX rotation with noisy alpha
+
+#     # Measure all qubits
+#     circuit.measure(range(qubits), range(qubits))
+#     return circuit
+
+# def generate_tfim_circuits(qubits, steps_list, num_circuits_per_step, angle_noise=0.0):
+#     start_time = time.time()
+#     circuits = []
+
+#     # Use ProcessPoolExecutor to parallelize circuit generation
+#     with ProcessPoolExecutor() as executor:
+#         futures = []
+#         for steps in steps_list:
+#             # Generate base angles and add noise
+#             base_angles = (np.pi / 2) * np.arange(1, steps + 1) / (steps + 1)
+#             base_angles = base_angles[:, np.newaxis] + angle_noise * np.random.randn(steps, num_circuits_per_step)
+#             betas = -np.sin(base_angles)
+#             alphas = -np.cos(base_angles)
+
+#             # Submit circuit generation tasks to the executor
+#             for circuit_idx in range(num_circuits_per_step):
+#                 futures.append(executor.submit(generate_single_circuit, steps, circuit_idx, betas, alphas, qubits))
+
+#         # Retrieve results from futures
+#         for future in futures:
+#             circuits.append(future.result())
+
+#     # Print the total time taken for circuit generation
+#     print("Circuit generation time: {:.4f} seconds".format(time.time() - start_time))
+#     return circuits
+
+def transpile_all_circuits(circuits, simulator):
+    start_time = time.time()
+    transpiled_circuits = transpile(circuits, simulator)
+    print("Transpilation time: {:.4f} seconds".format(time.time() - start_time))
+    return transpiled_circuits
 
 def simulate_tfim_circuits(qubits, numshots, steps_list, num_circuits_per_step=1, damping=0.0, dephazing=0.0, depolarizing=0.0, angle_noise=0.0):
     circuits = generate_tfim_circuits(qubits, steps_list, num_circuits_per_step, angle_noise)
@@ -405,13 +459,9 @@ def simulate_tfim_circuits(qubits, numshots, steps_list, num_circuits_per_step=1
         noise_model.add_all_qubit_quantum_error(depolarizing_error(depolarizing, 2), ['cp'])
     print("Noise model setup time: {:.4f} seconds".format(time.time() - start_time))
     
-    start_time = time.time()
     # Simulation
     simulator = AerSimulator(noise_model=noise_model)
-    with ThreadPoolExecutor() as executor:
-        futures = list(executor.map(lambda circuit: transpile(circuit, simulator), circuits))
-    transpiled_circuits = list(futures)
-    print("Transpilation time: {:.4f} seconds".format(time.time() - start_time))
+    transpiled_circuits = transpile_all_circuits(circuits, simulator)
     
     start_time = time.time()
     results = simulator.run(transpiled_circuits, shots=numshots).result().get_counts()
@@ -436,6 +486,7 @@ def simulate_tfim_circuits(qubits, numshots, steps_list, num_circuits_per_step=1
     counts_by_steps = {steps: dict(counts) for steps, counts in counts_by_steps.items()}
     
     return counts_by_steps
+
 
 
 def count_kinks(bitstring):
@@ -517,9 +568,9 @@ def calculate_numeric_model_parallel(qubits, numeric_noise, steps_max):
 
     results = Parallel(n_jobs=-1)(delayed(calculate_for_tau)(tau) for tau in taus)
 
-    means_numeric = {step: mean for step, mean, _, _ in results}
-    variances_numeric = {step: variance for step, _, variance, _ in results}
-    ratios_numeric = {step: ratio for step, _, _, ratio in results}
+    means_numeric = {i: mean for i, (_, mean, _, _) in enumerate(results)}
+    variances_numeric = {i: variance for i, (_, _, variance, _) in enumerate(results)}
+    ratios_numeric = {i: ratio for i, (_, _, _, ratio) in enumerate(results)}
 
     return means_numeric, variances_numeric, ratios_numeric
 
@@ -690,4 +741,5 @@ def plot_combined_models(steps_list, means_dephasing, variances_dephasing, ratio
     axs[2].set_title('Variance/Mean Ratio per Step')
     axs[2].set_xlabel('Steps')
     axs[2].set_ylabel('Variance/Mean Ratio')
+    axs[2].legend()
    
