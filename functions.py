@@ -390,57 +390,10 @@ def generate_tfim_circuits(qubits, steps_list, num_circuits_per_step, angle_nois
     print("Circuit generation time: {:.4f} seconds".format(time.time() - start_time))
     return circuits
 
-    
-
-# def generate_single_circuit(steps, circuit_idx, betas, alphas, qubits):
-#     # Initialize the quantum circuit
-#     circuit = QuantumCircuit(qubits, qubits)
-#     circuit.h(range(qubits))  # Apply Hadamard gate to all qubits to create superposition
-
-#     # Apply parameterized gates for each step
-#     for step in range(steps):
-#         beta = betas[step, circuit_idx]
-#         circuit.rz(beta, range(qubits))  # Apply RZ rotation with angle beta to each qubit
-
-#         # Apply controlled-phase and RX rotations
-#         for i in range(qubits):
-#             j = (i + 1) % qubits  # Neighboring qubit index
-#             circuit.cp(-2 * beta, i, j)  # Controlled-phase rotation between neighboring qubits
-#             circuit.rx(alphas[step, circuit_idx], i)  # RX rotation with noisy alpha
-
-#     # Measure all qubits
-#     circuit.measure(range(qubits), range(qubits))
-#     return circuit
-
-# def generate_tfim_circuits(qubits, steps_list, num_circuits_per_step, angle_noise=0.0):
-#     start_time = time.time()
-#     circuits = []
-
-#     # Use ProcessPoolExecutor to parallelize circuit generation
-#     with ProcessPoolExecutor() as executor:
-#         futures = []
-#         for steps in steps_list:
-#             # Generate base angles and add noise
-#             base_angles = (np.pi / 2) * np.arange(1, steps + 1) / (steps + 1)
-#             base_angles = base_angles[:, np.newaxis] + angle_noise * np.random.randn(steps, num_circuits_per_step)
-#             betas = -np.sin(base_angles)
-#             alphas = -np.cos(base_angles)
-
-#             # Submit circuit generation tasks to the executor
-#             for circuit_idx in range(num_circuits_per_step):
-#                 futures.append(executor.submit(generate_single_circuit, steps, circuit_idx, betas, alphas, qubits))
-
-#         # Retrieve results from futures
-#         for future in futures:
-#             circuits.append(future.result())
-
-#     # Print the total time taken for circuit generation
-#     print("Circuit generation time: {:.4f} seconds".format(time.time() - start_time))
-#     return circuits
 
 def transpile_all_circuits(circuits, simulator):
     start_time = time.time()
-    transpiled_circuits = transpile(circuits, simulator)
+    transpiled_circuits = transpile(circuits, simulator, num_processes=-1)
     print("Transpilation time: {:.4f} seconds".format(time.time() - start_time))
     return transpiled_circuits
 
