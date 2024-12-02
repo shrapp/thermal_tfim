@@ -38,3 +38,12 @@ I have found that the moments of the Kinks number operator are changing with the
 - I have written the new model explicitly.
 - I have run the model for small system and the results are kind of what i expected.
 - I dont exectly have a vision of what i want to do next.
+
+8. 17/11/2024 - 
+- We have suggested to check how open boundary conditions affect the results.
+- We have suggested to check how local dephasing instead of gloabl noise affects the results of the purity.
+- we thought about the possibility that the purity represent a majorana fermion in the system.
+- maybe we sould try the sudden quench model.
+
+9. 02/12/2024 -
+- 
