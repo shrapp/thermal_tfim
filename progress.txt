@@ -46,4 +46,12 @@ I have found that the moments of the Kinks number operator are changing with the
 - maybe we sould try the sudden quench model.
 
 9. 02/12/2024 -
-- 
+- I should find the purity of the numerical results.
+- I should plot some purity results for bigger systems and with log2 scael.
+- i should try to run a depolarization model for a numeric noise to local noise.
+- maybe i can use Daniels code for the calculations.
+- Sign up for the conference.
+
+10. 16/12/2024 -`
+- try 1D hatree fock model for description of the system.
+- simulate a model like:  H = J * S_z^2 + g(t) * S_x

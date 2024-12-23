@@ -16,6 +16,9 @@ from qiskit_aer import AerSimulator
 from collections import defaultdict
 from qiskit_aer.noise.errors import amplitude_damping_error, phase_damping_error, depolarizing_error
 from joblib import Parallel, delayed
+import scienceplots
+
+plt.style.use('science')
 
 logging.basicConfig(filename='logger.log', level=logging.INFO, format='%(asctime)s %(message)s')
 
@@ -485,18 +488,20 @@ def plot_model_comparisons(dephasing_param, qubits, total_numsots=100000, steps_
     means_depolarizing, variances_depolarizing, ratios_depolarizing = calculate_depolarizing_model(gamma, means_sim, variances_sim, qubits)
 
     # Plot the results
-    plot_individual_models(steps_list, means_dephasing, variances_dephasing, ratios_dephasing,
+    individuals = plot_individual_models(steps_list, means_dephasing, variances_dephasing, ratios_dephasing,
                            means_depolarizing, variances_depolarizing, ratios_depolarizing,
                            means_sim, variances_sim, ratios_sim,
                            means_global_noisy, variances_global_noisy, ratios_global_noisy,
                            means_numeric, variances_numeric, ratios_numeric,
                            dephasing_param, angle_noise, numeric_noise, gamma)
-    plot_combined_models(steps_list, means_dephasing, variances_dephasing, ratios_dephasing,
+    comparrison = plot_combined_models(steps_list, means_dephasing, variances_dephasing, ratios_dephasing,
                          means_depolarizing, variances_depolarizing, ratios_depolarizing,
                          means_sim, variances_sim, ratios_sim,
                          means_global_noisy, variances_global_noisy, ratios_global_noisy,
                          means_numeric, variances_numeric, ratios_numeric,
                          dephasing_param, angle_noise, numeric_noise, gamma)
+    
+    return individuals, comparrison
 
 def simulate_models(qubits, total_numsots, steps_list, num_circuits_per_step_noisy, dephasing_param, angle_noise):
     numshots = total_numsots // num_circuits_per_step_noisy
@@ -640,6 +645,7 @@ def plot_individual_models(steps_list, means_dephasing, variances_dephasing, rat
 
     plt.tight_layout(rect=(0, 0.03, 1, 0.95))
     plt.show()
+    return fig
 
 def plot_combined_models(steps_list, means_dephasing, variances_dephasing, ratios_dephasing,
                          means_depolarizing, variances_depolarizing, ratios_depolarizing,
@@ -660,13 +666,13 @@ def plot_combined_models(steps_list, means_dephasing, variances_dephasing, ratio
                       max(max(ratios_dephasing.values()), max(ratios_depolarizing.values()), max(ratios_sim.values()), max(ratios_global_noisy.values()), max(ratios_numeric.values()))]
 
     fig, axs = plt.subplots(3, 1, figsize=(10, 20))
-    fig.suptitle('Comparison of Dephasing, Depolarizing, Sim, Global, and Numeric Models', fontsize=16)
+    #fig.suptitle('Comparison of Dephasing, Depolarizing, Sim, Global, and Numeric Models', fontsize=16)
 
     axs[1].plot(variances_dephasing.keys(), variances_dephasing.values(), 'o', label=f'Variance (Dephasing, param={dephasing_param})')
     axs[1].plot(variances_depolarizing.keys(), variances_depolarizing.values(), 'x', label=f'Variance (Depolarizing, gamma={gamma:.4f})')
-    axs[1].plot(variances_sim.keys(), variances_sim.values(), '^', label='Variance (Sim)')
-    axs[1].plot(variances_global_noisy.keys(), variances_global_noisy.values(), 's', label=f'Variance (Global Noise, param={angle_noise})')
-    axs[1].plot(variances_numeric.keys(), variances_numeric.values(), 'd', label=f'Variance (Numeric, noise={numeric_noise})')
+    axs[1].plot(variances_sim.keys(), variances_sim.values(), '^', label='Variance (Coherent Simulation)')
+    axs[1].plot(variances_global_noisy.keys(), variances_global_noisy.values(), 's', label=f'Variance (Angle Noise, param={angle_noise})')
+    axs[1].plot(variances_numeric.keys(), variances_numeric.values(), 'd', label=f'Variance (Noisy Numeric model, noise={numeric_noise})')
     axs[1].set_title('Variance per Step')
     axs[1].set_xlabel('Steps')
     axs[1].set_ylabel('Variance')
@@ -676,9 +682,9 @@ def plot_combined_models(steps_list, means_dephasing, variances_dephasing, ratio
 
     axs[0].plot(means_dephasing.keys(), means_dephasing.values(), 'o', label=f'Mean (Dephasing, param={dephasing_param})')
     axs[0].plot(means_depolarizing.keys(), means_depolarizing.values(), 'x', label=f'Mean (Depolarizing, gamma={gamma:.4f})')
-    axs[0].plot(means_sim.keys(), means_sim.values(), '^', label='Mean (Sim)')
-    axs[0].plot(means_global_noisy.keys(), means_global_noisy.values(), 's', label=f'Mean (Global Noise, param={angle_noise})')
-    axs[0].plot(means_numeric.keys(), means_numeric.values(), 'd', label=f'Mean (Numeric, noise={numeric_noise})')
+    axs[0].plot(means_sim.keys(), means_sim.values(), '^', label='Mean (Coherent Simulation)')
+    axs[0].plot(means_global_noisy.keys(), means_global_noisy.values(), 's', label=f'Mean (Angle Noise, param={angle_noise})')
+    axs[0].plot(means_numeric.keys(), means_numeric.values(), 'd', label=f'Mean (Noisy Numeric model, noise={numeric_noise})')
     axs[0].set_title('Mean per Step')
     axs[0].set_xlabel('Steps')
     axs[0].set_ylabel('Mean')
@@ -688,11 +694,16 @@ def plot_combined_models(steps_list, means_dephasing, variances_dephasing, ratio
 
     axs[2].plot(ratios_dephasing.keys(), ratios_dephasing.values(), 'o', label=f'Variance/Mean (Dephasing, param={dephasing_param})')
     axs[2].plot(ratios_depolarizing.keys(), ratios_depolarizing.values(), 'x', label=f'Variance/Mean (Depolarizing, gamma={gamma:.4f})')
-    axs[2].plot(ratios_sim.keys(), ratios_sim.values(), '^', label='Variance/Mean (Sim)')
-    axs[2].plot(ratios_global_noisy.keys(), ratios_global_noisy.values(), 's', label=f'Variance/Mean (Global Noise, param={angle_noise})')
-    axs[2].plot(ratios_numeric.keys(), ratios_numeric.values(), 'd', label=f'Variance/Mean (Numeric, noise={numeric_noise})')
+    axs[2].plot(ratios_sim.keys(), ratios_sim.values(), '^', label='Variance/Mean (Coherent Simulation)')
+    axs[2].plot(ratios_global_noisy.keys(), ratios_global_noisy.values(), 's', label=f'Variance/Mean (Angle Noise, param={angle_noise})')
+    axs[2].plot(ratios_numeric.keys(), ratios_numeric.values(), 'd', label=f'Variance/Mean (Noisy Numeric model, noise={numeric_noise})')
     axs[2].set_title('Variance/Mean Ratio per Step')
     axs[2].set_xlabel('Steps')
     axs[2].set_ylabel('Variance/Mean Ratio')
     axs[2].legend()
+    
+    return fig
+
+    
+    
    
