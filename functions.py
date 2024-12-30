@@ -22,6 +22,22 @@ plt.style.use('science')
 
 logging.basicConfig(filename='logger.log', level=logging.INFO, format='%(asctime)s %(message)s')
 
+def generate_random_density_matrix(N):
+    # Step 1: Generate a random diagonal matrix with eigenvalues summing to 1
+    eigenvalues = np.random.dirichlet(np.ones(N))
+    rho_diag = np.diag(eigenvalues)
+    
+    # Step 2: Generate a Haar-random unitary matrix using the QR decomposition
+    X = (np.random.randn(N, N) + 1j * np.random.randn(N, N)) / np.sqrt(2)
+    Q, R = np.linalg.qr(X)
+    R = np.diag(np.diag(R) / np.abs(np.diag(R)))
+    U = Q @ R
+    
+    # Step 3: Transform the diagonal matrix into a density matrix
+    rho = U @ rho_diag @ np.conjugate(U.T)
+    
+    return rho
+
 def commutator(A, B):
     """
     Calculate the commutator of two matrices A and B.
