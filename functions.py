@@ -500,8 +500,7 @@ def plot_model_comparisons(dephasing_param, qubits, total_numsots=100000, steps_
     means_sim, variances_sim, ratios_sim = calculate_model_statistics(results_sim, qubits)
 
     # Optimize gamma for depolarizing model
-    gamma = optimize_gamma(means_global_noisy, variances_global_noisy, means_sim, variances_sim, fit_gamma, qubits)
-    means_depolarizing, variances_depolarizing, ratios_depolarizing = calculate_depolarizing_model(gamma, means_sim, variances_sim, qubits)
+    gamma, means_depolarizing, variances_depolarizing, ratios_depolarizing = optimize_and_calculate(means_dephasing, variances_dephasing, means_sim, variances_sim, fit_gamma, qubits)
 
     # Plot the results
     individuals = plot_individual_models(steps_list, means_dephasing, variances_dephasing, ratios_dephasing,
@@ -555,38 +554,47 @@ def calculate_model_statistics(results, qubits):
     ratios = {s: variances[s] / (means[s] + epsilon) for s in probs.keys()}
     return means, variances, ratios
 
-def optimize_gamma(means_global_noisy, variances_global_noisy, means_sim, variances_sim, fit_gamma, qubits):
+def optimize_and_calculate(means_global_noisy, variances_global_noisy, means_sim, variances_sim, fit_gamma, qubits):
+    # Helper function: Exponential decay
     exponential_decay = lambda steps, gamma: np.exp(-gamma * steps)
 
+    # Helper function: Depolarizing error model
     def depolarizing_error(gamma, probs, static_prob):
         return {s: (1 - exponential_decay(s, gamma)) * static_prob + exponential_decay(s, gamma) * p for s, p in probs.items()}
 
-    def objective_function_mean(gamma):
-        means_depolarizing = depolarizing_error(gamma, means_sim, qubits / 2)
-        diff = np.sum([(means_global_noisy[s] - means_depolarizing[s]) ** 2 for s in means_global_noisy.keys()])
+    # Objective function for optimization
+    def objective_function(gamma, data_noisy, data_sim, static_prob_factor):
+        depolarizing_model = depolarizing_error(gamma, data_sim, qubits / static_prob_factor)
+        diff = np.sum([(data_noisy[s] - depolarizing_model[s]) ** 2 for s in data_noisy.keys()])
         return diff
 
-    def objective_function_variance(gamma):
-        variances_depolarizing = depolarizing_error(gamma, variances_sim, qubits / 4)
-        diff = np.sum([(variances_global_noisy[s] - variances_depolarizing[s]) ** 2 for s in variances_global_noisy.keys()])
-        return diff
-
+    # Optimize gamma
     if fit_gamma == 'mean':
-        result = scipy.optimize.minimize_scalar(objective_function_mean, bounds=(0, 1), method='bounded')
+        result = scipy.optimize.minimize_scalar(
+            objective_function, 
+            bounds=(0, 1), 
+            method='bounded', 
+            args=(means_global_noisy, means_sim, 2)  # Static prob factor is qubits / 2 for mean
+        )
     elif fit_gamma == 'variance':
-        result = scipy.optimize.minimize_scalar(objective_function_variance, bounds=(0, 1), method='bounded')
+        result = scipy.optimize.minimize_scalar(
+            objective_function, 
+            bounds=(0, 1), 
+            method='bounded', 
+            args=(variances_global_noisy, variances_sim, 4)  # Static prob factor is qubits / 4 for variance
+        )
     else:
         raise ValueError("fit_gamma must be either 'mean' or 'variance'")
 
-    return result.x
+    gamma = result.x
 
-def calculate_depolarizing_model(gamma, means_sim, variances_sim, qubits):
-    exponential_decay = lambda steps, gamma: np.exp(-gamma * steps)
-    depolarizing_error = lambda gamma, probs, static_prob: {s: (1 - exponential_decay(s, gamma)) * static_prob + exponential_decay(s, gamma) * p for s, p in probs.items()}
+    # Calculate depolarizing models
     means_depolarizing = depolarizing_error(gamma, means_sim, qubits / 2)
     variances_depolarizing = depolarizing_error(gamma, variances_sim, qubits / 4)
+    epsilon = 1e-12  # Small constant to avoid division by zero
     ratios_depolarizing = {s: variances_depolarizing[s] / (means_depolarizing[s] + epsilon) for s in means_sim.keys()}
-    return means_depolarizing, variances_depolarizing, ratios_depolarizing
+
+    return gamma, means_depolarizing, variances_depolarizing, ratios_depolarizing
 
 def plot_individual_models(steps_list, means_dephasing, variances_dephasing, ratios_dephasing,
                            means_depolarizing, variances_depolarizing, ratios_depolarizing,
