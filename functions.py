@@ -16,9 +16,6 @@ from qiskit_aer import AerSimulator
 from collections import defaultdict
 from qiskit_aer.noise.errors import amplitude_damping_error, phase_damping_error, depolarizing_error
 from joblib import Parallel, delayed
-import scienceplots
-
-plt.style.use('science')
 
 logging.basicConfig(filename='logger.log', level=logging.INFO, format='%(asctime)s %(message)s')
 

@@ -55,3 +55,8 @@ I have found that the moments of the Kinks number operator are changing with the
 10. 16/12/2024 -`
 - try 1D hatree fock model for description of the system.
 - simulate a model like:  H = J * S_z^2 + g(t) * S_x
+
+11. 06/01/2025 -
+- Find the time scales for each model behaviors.
+- Write a discrete numeric model for the system.
+- Find the G.S of the system for an arbitrary g(t) and let state evolve only under noise.

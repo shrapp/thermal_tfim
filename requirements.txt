@@ -1,0 +1,7 @@
+matplotlib
+pandas
+qiskit
+joblib
+scienceplots
+qiskit_aer
+scipy
