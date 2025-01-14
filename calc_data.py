@@ -5,7 +5,7 @@ import pandas as pd
 
 from functions import calc_data
 
-data = pd.read_csv('data.csv')
+data = pd.read_csv('data/data.csv')
 
 
 Ns = data['N'].unique()

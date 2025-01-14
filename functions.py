@@ -63,10 +63,9 @@ def dag(matrix):
 # Parameters
 hbar = 1.0   # in natural units
 epsilon = 1e-7
-data_file = 'data.csv'
+data_file = 'data/data.csv'
 sigX = np.array([[0, 1], [1, 0]])
 sigZ = np.array([[1, 0], [0, -1]])
-dt = 0.01
 
 def g0(t, tau):
     return t/tau if tau > 0 else 0
@@ -103,10 +102,10 @@ def rho_dt(t, rho, tau, k, w):
     rho_dot = U + D
     return rho_dot.flatten()
 
-def lz_time_evolution_single_k(k, t_max, tau):
+def lz_time_evolution_single_k(k, tau):
     # use scipy.integrate.solve_ivp to solve the ODE H(t) psi(t) = i hbar d/dt psi(t)
     psi0 = np.array([0+0j, 1+0j])
-    return  solve_ivp(fun=psi_dt, method='DOP853', t_span=(0, t_max), y0=psi0, args=(tau, t_max, k), rtol = epsilon, atol = epsilon)
+    return  solve_ivp(fun=psi_dt, method='DOP853', t_span=(0, tau), y0=psi0, args=(tau, k), rtol = epsilon, atol = epsilon)
 
 def noisy_lz_time_evolution_single_k(k, tau, w):
     # use scipy.integrate.solve_ivp to solve the ODE H(t) psi(t) = i hbar d/dt psi(t)
@@ -114,10 +113,9 @@ def noisy_lz_time_evolution_single_k(k, tau, w):
     return  solve_ivp(fun=rho_dt, method='DOP853', t_span=(0, tau), y0= rho0.flatten(), args=(tau, k, w), rtol = epsilon, atol = epsilon, vectorized=True)
 
 def lz_time_evolution(ks, tau):
-    t_max = 100*tau
     # use pool to parallelize the calculation for each k
     with Pool() as pool:
-        results = pool.starmap(lz_time_evolution_single_k, [(k, t_max, tau) for k in ks])
+        results = pool.starmap(lz_time_evolution_single_k, [(k, tau) for k in ks])
     return results
 
 def noisy_lz_time_evolution(ks, tau, w):
@@ -125,7 +123,6 @@ def noisy_lz_time_evolution(ks, tau, w):
     with Pool() as pool:
         results = pool.starmap(noisy_lz_time_evolution_single_k, [(k, tau, w) for k in ks])
     return results
-
 
 def calc_pk(ks, tau):
     # calculate the time evolution for each k
@@ -142,7 +139,6 @@ def calk_noisy_pk(ks, tau, w):
     pks = np.array([np.abs(np.dot(np.array([np.sin(k/2), np.cos(k/2)]), np.dot(result.y[:,-1].reshape(2,2), np.array([[np.sin(k/2)], [np.cos(k/2)]]))))[0] for k ,result in zip(ks, results)])
     # remove valuse that are too small
     return np.where(pks < epsilon/100, 0, pks)
-     
 
 def k_f(N):
     # Filtering out even numbers
