@@ -540,6 +540,15 @@ def calculate_numeric_model_parallel(qubits, numeric_noise, steps_max):
 
     return means_numeric, variances_numeric, ratios_numeric
 
+def calculate_independent_k_model(qubits, tau, noise):
+    ks = k_f(qubits)
+
+    density_matrix = calculate_numeric_density_matrix(qubits, depth, noise)
+    kinks_distribution = calculate_kinks_distribution(density_matrix)
+    avg_kinks = calculate_average_kinks(kinks_distribution)
+    var_kinks = calculate_variance_kinks(kinks_distribution)
+    purity = calculate_purity(density_matrix)
+
 def calculate_model_statistics(results, qubits):
     probs = {s: calc_kinks_probability(d) for s, d in results.items()}
     means = {s: calc_kinks_mean(d) for s, d in probs.items()}
