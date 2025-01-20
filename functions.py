@@ -382,21 +382,28 @@ def generate_single_circuit(steps, circuit_idx, betas, alphas, qubits):
     circuit.measure(range(qubits), range(qubits))
     return circuit
 
+def generate_tfim_circuit(qubits, steps, num_circuits_per_step, angle_noise=0.0):
+    circuits = []
+    # Generate base angles and add noise
+    base_angles = (np.pi / 2) * np.arange(1, steps + 1) / (steps + 1)
+    base_angles = base_angles[:, np.newaxis] + angle_noise * np.random.randn(steps, num_circuits_per_step)
+    betas = -np.sin(base_angles)
+    alphas = -np.cos(base_angles)
+
+    # Generate circuits without parallelism
+    for circuit_idx in range(num_circuits_per_step):
+        circuit = generate_single_circuit(steps, circuit_idx, betas, alphas, qubits)
+        circuits.append(circuit)
+    return circuits
+
+
+
 def generate_tfim_circuits(qubits, steps_list, num_circuits_per_step, angle_noise=0.0):
     start_time = time.time()
     circuits = []
 
     for steps in steps_list:
-        # Generate base angles and add noise
-        base_angles = (np.pi / 2) * np.arange(1, steps + 1) / (steps + 1)
-        base_angles = base_angles[:, np.newaxis] + angle_noise * np.random.randn(steps, num_circuits_per_step)
-        betas = -np.sin(base_angles)
-        alphas = -np.cos(base_angles)
-
-        # Generate circuits without parallelism
-        for circuit_idx in range(num_circuits_per_step):
-            circuit = generate_single_circuit(steps, circuit_idx, betas, alphas, qubits)
-            circuits.append(circuit)
+        circuits.extend(generate_tfim_circuit(qubits, steps, num_circuits_per_step, angle_noise))
 
     # Print the total time taken for circuit generation
     print("Circuit generation time: {:.4f} seconds".format(time.time() - start_time))

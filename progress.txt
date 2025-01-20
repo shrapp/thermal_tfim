@@ -60,3 +60,9 @@ I have found that the moments of the Kinks number operator are changing with the
 - Find the time scales for each model behaviors.
 - Write a discrete numeric model for the system.
 - Find the G.S of the system for an arbitrary g(t) and let state evolve only under noise.
+
+12. 20/01/2025 -
+- Align graphs with L2 norm.
+- choose parameters with less noise
+- plot with the boundaries' data
+- show the variance plots too
