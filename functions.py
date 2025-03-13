@@ -1,6 +1,7 @@
 import ast
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 import logging
+from enum import Enum
 from multiprocessing import Lock, Pool, Process
 import time
 from matplotlib import pyplot as plt
@@ -16,8 +17,27 @@ from qiskit_aer import AerSimulator
 from collections import defaultdict
 from qiskit_aer.noise.errors import amplitude_damping_error, phase_damping_error, depolarizing_error
 from joblib import Parallel, delayed
+from qiskit.quantum_info import DensityMatrix
+
 
 logging.basicConfig(filename='logger.log', level=logging.INFO, format='%(asctime)s %(message)s')
+
+class Models(Enum):
+    INDEPENDENT_KS_NUMERIC = 'independent_ks_numeric'
+    QISKIT_GLOBAL_NOISE = 'qiskit_global_noise'
+    QISKIT_DEPHASING = 'qiskit_dephasing'
+
+class Parameters(Enum):
+    QUBITS = 'qubits'
+    NOISE_PARAM = 'noise_param'
+    DEPTH = 'depth'
+    MEAN_KINKS = 'mean_kinks'
+    VARIANCE_KINKS = 'variance_kinks'
+    PURITY = 'purity'
+    DENSITY_MATRIX = 'density_matrix'
+    KINKS_PROBABILITY = 'kinks_probability'
+    KINKS_NUMBER = 'kinks_number'
+    AVERAGE_DENSITY_MATRIX = 'average_density_matrix'
 
 def generate_random_density_matrix(N):
     # Step 1: Generate a random diagonal matrix with eigenvalues summing to 1
@@ -360,7 +380,57 @@ def calc_data_single(N, tau, lock, noise):
     p2.join()
     
     logging.info(f'Finished calculating data for N={N}, tau={tau}, noise={noise}')
-    
+
+def generate_single_circuit_parallel(params):
+    qubits, steps, circuit_idx, betas, alphas, noisy_betas, noise_method = params
+
+    circuit = QuantumCircuit(qubits, qubits)
+    circuit.h(range(qubits))
+
+    for step in range(steps):
+        beta = betas[step, circuit_idx]
+        alpha = alphas[step, circuit_idx]
+
+        if noise_method == 'dephasing':
+            circuit.rz(noisy_betas[step, circuit_idx], range(qubits))
+        else:
+            circuit.rz(beta, range(qubits))
+
+        for i in range(qubits):
+            j = (i + 1) % qubits
+            circuit.cp(-2 * beta, i, j)
+
+        for i in range(qubits):
+            circuit.rx(alpha, i)
+
+    dm = DensityMatrix.from_instruction(circuit)
+    circuit.measure(range(qubits), range(qubits))
+
+    return circuit, dm.data
+
+
+def generate_qiskit_circuits(qubits, steps, num_circuits_per_step, noise_std=0.0, noise_method='global'):
+    base_angles = (np.pi / 2) * np.arange(1, steps + 1) / (steps + 1)
+    base_angles = base_angles[:, np.newaxis]
+    noisy_base_angles = base_angles + noise_std * np.random.randn(steps, num_circuits_per_step)
+
+    if noise_method == 'global':
+        betas = -np.sin(noisy_base_angles)
+        alphas = -np.cos(noisy_base_angles)
+    else:
+        base_angles = np.tile(base_angles, (1, num_circuits_per_step))
+        betas = -np.sin(base_angles)
+        alphas = -np.cos(base_angles)
+        noisy_betas = -np.sin(noisy_base_angles)
+
+    params = [(qubits, steps, i, betas, alphas, noisy_betas if noise_method == 'dephasing' else None, noise_method)
+              for i in range(num_circuits_per_step)]
+
+    with Pool() as pool:
+        results = pool.map(generate_single_circuit_parallel, params)
+
+    circuits, density_matrices = zip(*results)
+    return list(circuits), list(density_matrices)
 
 def generate_single_circuit(steps, circuit_idx, betas, alphas, qubits):
     # Initialize the quantum circuit
@@ -547,14 +617,6 @@ def calculate_numeric_model_parallel(qubits, numeric_noise, steps_max):
 
     return means_numeric, variances_numeric, ratios_numeric
 
-def calculate_independent_k_model(qubits, tau, noise):
-    ks = k_f(qubits)
-
-    density_matrix = calculate_numeric_density_matrix(qubits, depth, noise)
-    kinks_distribution = calculate_kinks_distribution(density_matrix)
-    avg_kinks = calculate_average_kinks(kinks_distribution)
-    var_kinks = calculate_variance_kinks(kinks_distribution)
-    purity = calculate_purity(density_matrix)
 
 def calculate_model_statistics(results, qubits):
     probs = {s: calc_kinks_probability(d) for s, d in results.items()}

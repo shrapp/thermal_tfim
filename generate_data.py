@@ -37,10 +37,11 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from functions import k_f, noisy_lz_time_evolution, epsilon, calc_kink_probabilities, calc_kinks_probability, \
-    calc_kinks_mean, calc_kinks_variance
+    calc_kinks_mean, calc_kinks_variance, generate_qiskit_circuits
 from qiskit.quantum_info import DensityMatrix
 from qiskit_aer import AerSimulator
 from qiskit import QuantumCircuit, transpile
+import matplotlib.pyplot as plt
 
 # Set Qiskit logging level to WARNING to suppress INFO and DEBUG messages
 qiskit_logger = logging.getLogger('qiskit')
@@ -53,63 +54,6 @@ console_handler.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 console_handler.setFormatter(formatter)
 logging.getLogger().addHandler(console_handler)
-
-
-
-def generate_qiskit_circuits(qubits, steps, num_circuits_per_step, noise_std=0.0, noise_method='global'):
-    """
-    Generate TFIM circuits with different noise methods
-
-    Args:
-        qubits: Number of qubits
-        steps: Number of steps/layers
-        num_circuits_per_step: Number of circuits to generate
-        noise_std: Standard deviation of the noise
-        noise_method: Either 'global' (noise on all angles) or 'dephasing' (noise only on RZ)
-    """
-    circuits = []
-    density_matrices = []
-    # Generate base angles
-    base_angles = (np.pi / 2) * np.arange(1, steps + 1) / (steps + 1)
-    base_angles = base_angles[:, np.newaxis]
-    noisy_base_angles = base_angles + noise_std * np.random.randn(steps, num_circuits_per_step)
-    # If global noise, add noise to both betas and alphas
-    if noise_method == 'global':
-        # Generate base betas and alphas
-        betas = -np.sin(noisy_base_angles)
-        alphas = -np.cos(noisy_base_angles)
-    else:
-        base_angles = np.tile(base_angles, (1, num_circuits_per_step))
-        betas = -np.sin(base_angles)
-        alphas = -np.cos(base_angles)
-        noisy_betas = -np.sin(noisy_base_angles)
-
-    # Generate circuits
-    for circuit_idx in range(num_circuits_per_step):
-        circuit = QuantumCircuit(qubits, qubits)
-        circuit.h(range(qubits))
-
-        for step in range(steps):
-            beta = betas[step, circuit_idx]
-            alpha = alphas[step, circuit_idx]
-
-            # Add dephasing noise only to RZ gates if dephasing method
-            if noise_method == 'dephasing':
-                circuit.rz(noisy_betas[step, circuit_idx], range(qubits))
-            else:
-                circuit.rz(beta, range(qubits))
-
-            # Apply controlled-phase and RX rotations
-            for i in range(qubits):
-                j = (i + 1) % qubits
-                circuit.cp(-2 * beta, i, j)
-                circuit.rx(alpha, i)
-        dm = DensityMatrix.from_instruction(circuit)
-        density_matrices.append(dm.data)
-        circuit.measure(range(qubits), range(qubits))
-        circuits.append(circuit)
-
-    return circuits, density_matrices
 
 
 def save_data(file_path, data, mode='a', header=False):
@@ -128,6 +72,7 @@ def save_data(file_path, data, mode='a', header=False):
 
     data.to_csv(file_path, mode=mode, header=header, index=False)
 
+
 def data_exists(existing_data, model, num_qubits, depth, noise_param):
     """Check if data with the given parameters already exists."""
     if existing_data.empty:
@@ -144,12 +89,14 @@ def data_exists(existing_data, model, num_qubits, depth, noise_param):
             (existing_data['depth'].round(6) == depth) &
             (existing_data['noise_param'].round(6) == noise_param)).any()
 
+
+
 def process_numeric_model(ks, depth, noise_param, num_qubits):
     """Process the numeric model and return the data."""
     ks_solutions = noisy_lz_time_evolution(ks, depth, noise_param)
-    tensor_product = ks_solutions[0].y[:,-1].reshape(2,2)
+    tensor_product = ks_solutions[0].y[:, -1].reshape(2, 2)
     for solution in ks_solutions[1:]:
-        tensor_product = np.kron(tensor_product, solution.y[:,-1].reshape(2,2))
+        tensor_product = np.kron(tensor_product, solution.y[:, -1].reshape(2, 2))
     density_matrix = tensor_product
     rho2 = density_matrix @ density_matrix
     purity = rho2.trace().real
@@ -172,6 +119,7 @@ def process_numeric_model(ks, depth, noise_param, num_qubits):
         "purity": purity
     }
 
+
 def get_matching_rows(df, model, num_qubits, depth, noise_param):
     """Get all rows from the DataFrame that match the given parameters."""
     model = str(model)
@@ -184,8 +132,9 @@ def get_matching_rows(df, model, num_qubits, depth, noise_param):
         (df['qubits'] == num_qubits) &
         (df['depth'].round(6) == depth) &
         (df['noise_param'].round(6) == noise_param)
-    ]
+        ]
     return matching_rows
+
 
 def generate_data():
     models = [
@@ -193,17 +142,18 @@ def generate_data():
         "qiskit_global_noise",
         "qiskit_dephasing"
     ]
-    numshots = 1000
-    num_circuits = 100
-    num_qubits_list = [4, 6, 8]
-    depth_list_numeric = [round(0, 6)] + [round(x, 6) for x in np.logspace(-4, 2, 50).tolist()]
-    depth_list_qiskit = [round(i, 6) for i in range(51)]
-    noise_params = [round(x, 6) for x in np.linspace(0, 1, 20).tolist()]
+    numshots = 10000
+    num_circuits = 200
+    num_qubits_list = [8]
+    depth_list_numeric = [round(i, 6) for i in range(0,41, 4)]
+    depth_list_qiskit = [round(i, 6) for i in range(0, 41, 4)]
+    noise_params_numeric = [round(x, 6) for x in np.linspace(0, 0.3, 3).tolist()]
 
-    total_iterations = len(models) * len(num_qubits_list) * len(noise_params) * max(len(depth_list_numeric),len(depth_list_qiskit))
+    total_iterations = (len(models) * len(num_qubits_list) * len(noise_params_numeric)
+                        * max(len(depth_list_numeric), len(depth_list_qiskit)))
     progress_bar = tqdm(total=total_iterations, desc="Generating Data")
 
-    file_path = "data/new_data_from_2025.csv"
+    file_path = "data/240225.csv"
     header_written = os.path.exists(file_path)
 
     if header_written:
@@ -215,9 +165,16 @@ def generate_data():
         for model in models:
             ks = k_f(num_qubits)
             for depth in (depth_list_numeric if 'numeric' in model else depth_list_qiskit):
-                for noise_param in noise_params:
+                for noise_param in noise_params_numeric:
+                    if "dephasing" in model:
+                        noise_type = "dephasing"
+                        noise_param = noise_param * 9
+                    elif "global" in model:
+                        noise_type = "global"
+                        noise_param = noise_param * 2.3
                     if data_exists(existing_data, model, num_qubits, depth, noise_param):
-                        logging.info(f"Skipping: Model={model}, Qubits={num_qubits}, Depth={depth}, Noise={noise_param} (already exists)")
+                        logging.info(
+                            f"Skipping: Model={model}, Qubits={num_qubits}, Depth={depth}, Noise={noise_param} (already exists)")
                         progress_bar.update(1)
                         continue
 
@@ -234,8 +191,8 @@ def generate_data():
                         data_list.append(data)
 
                     elif "qiskit" in model:
-                        noise_type = "dephasing" if "dephasing" in model else "global"
-                        circuits, density_matrices = generate_qiskit_circuits(num_qubits, depth, num_circuits, noise_param, noise_type)
+                        circuits, density_matrices = generate_qiskit_circuits(num_qubits, depth, num_circuits,
+                                                                              noise_param, noise_type)
                         avg_density_matrix = sum(density_matrices) / num_circuits
                         rho_squared = avg_density_matrix @ avg_density_matrix
                         purity = np.trace(rho_squared).real
@@ -251,7 +208,7 @@ def generate_data():
                                     counts[key] = value
                         probs = calc_kinks_probability(counts)
                         mean = calc_kinks_mean(probs)
-                        variances = sum((k - mean)**2 * v for k, v in probs.items())
+                        variances = sum((k - mean) ** 2 * v for k, v in probs.items())
                         data = {
                             "density_matrix": avg_density_matrix,
                             "kinks_distribution": probs,
@@ -271,6 +228,7 @@ def generate_data():
                     progress_bar.update(1)
 
     progress_bar.close()
+
 
 if __name__ == "__main__":
     generate_data()

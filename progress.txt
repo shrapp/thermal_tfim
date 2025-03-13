@@ -66,3 +66,9 @@ I have found that the moments of the Kinks number operator are changing with the
 - choose parameters with less noise
 - plot with the boundaries' data
 - show the variance plots too
+
+13. 17/02/2025 -
+- build a discrete numeric model with delta t = 1 and a changing hamiltionian for every step.
+
+14. 24/02/2025 -
+- I have problems with the numeric model, should try a simpler model at first.
