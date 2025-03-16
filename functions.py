@@ -381,6 +381,30 @@ def calc_data_single(N, tau, lock, noise):
     
     logging.info(f'Finished calculating data for N={N}, tau={tau}, noise={noise}')
 
+
+def generate_qiskit_circuits(qubits, steps, num_circuits_per_step, noise_std=0.0, noise_method='global'):
+    base_angles = (np.pi / 2) * np.arange(1, steps + 1) / (steps + 1)
+    base_angles = base_angles[:, np.newaxis]
+    noisy_base_angles = base_angles + noise_std * np.random.randn(steps, num_circuits_per_step)
+
+    if noise_method == 'global':
+        betas = -np.sin(noisy_base_angles)
+        alphas = -np.cos(noisy_base_angles)
+    else:
+        base_angles = np.tile(base_angles, (1, num_circuits_per_step))
+        betas = -np.sin(base_angles)
+        alphas = -np.cos(base_angles)
+        noisy_betas = -np.sin(noisy_base_angles)
+
+    params = [(qubits, steps, i, betas, alphas, noisy_betas if noise_method == 'dephasing' else None, noise_method)
+              for i in range(num_circuits_per_step)]
+
+    with Pool() as pool:
+        results = pool.map(generate_single_circuit_parallel, params)
+
+    circuits, density_matrices = zip(*results)
+    return list(circuits), list(density_matrices)
+
 def generate_single_circuit_parallel(params):
     qubits, steps, circuit_idx, betas, alphas, noisy_betas, noise_method = params
 
@@ -407,30 +431,6 @@ def generate_single_circuit_parallel(params):
     circuit.measure(range(qubits), range(qubits))
 
     return circuit, dm.data
-
-
-def generate_qiskit_circuits(qubits, steps, num_circuits_per_step, noise_std=0.0, noise_method='global'):
-    base_angles = (np.pi / 2) * np.arange(1, steps + 1) / (steps + 1)
-    base_angles = base_angles[:, np.newaxis]
-    noisy_base_angles = base_angles + noise_std * np.random.randn(steps, num_circuits_per_step)
-
-    if noise_method == 'global':
-        betas = -np.sin(noisy_base_angles)
-        alphas = -np.cos(noisy_base_angles)
-    else:
-        base_angles = np.tile(base_angles, (1, num_circuits_per_step))
-        betas = -np.sin(base_angles)
-        alphas = -np.cos(base_angles)
-        noisy_betas = -np.sin(noisy_base_angles)
-
-    params = [(qubits, steps, i, betas, alphas, noisy_betas if noise_method == 'dephasing' else None, noise_method)
-              for i in range(num_circuits_per_step)]
-
-    with Pool() as pool:
-        results = pool.map(generate_single_circuit_parallel, params)
-
-    circuits, density_matrices = zip(*results)
-    return list(circuits), list(density_matrices)
 
 def generate_single_circuit(steps, circuit_idx, betas, alphas, qubits):
     # Initialize the quantum circuit

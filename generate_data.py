@@ -135,6 +135,86 @@ def get_matching_rows(df, model, num_qubits, depth, noise_param):
         ]
     return matching_rows
 
+def generate_qiskit_circuits(qubits, steps, num_circuits_per_step, noise_std=0.0, noise_method='global'):
+    base_angles = (np.pi / 2) * np.arange(1, steps + 1) / (steps + 1)
+    base_angles = base_angles[:, np.newaxis]
+    noisy_base_angles = base_angles + noise_std * np.random.randn(steps, num_circuits_per_step)
+
+    if noise_method == 'global':
+        betas = -np.sin(noisy_base_angles)
+        alphas = -np.cos(noisy_base_angles)
+    else:
+        base_angles = np.tile(base_angles, (1, num_circuits_per_step))
+        betas = -np.sin(base_angles)
+        alphas = -np.cos(base_angles)
+        noisy_betas = -np.sin(noisy_base_angles)
+
+    params = [(qubits, steps, i, betas, alphas, noisy_betas if noise_method == 'dephasing' else None, noise_method)
+              for i in range(num_circuits_per_step)]
+
+    with Pool() as pool:
+        results = pool.map(generate_single_circuit_parallel, params)
+
+    circuits, density_matrices = zip(*results)
+    return list(circuits), list(density_matrices)
+
+def generate_single_circuit_parallel(params):
+    qubits, steps, circuit_idx, betas, alphas, noisy_betas, noise_method = params
+
+    circuit = QuantumCircuit(qubits, qubits)
+    circuit.h(range(qubits))
+
+    for step in range(steps):
+        beta = betas[step, circuit_idx]
+        alpha = alphas[step, circuit_idx]
+
+        if noise_method == 'dephasing':
+            circuit.rz(noisy_betas[step, circuit_idx], range(qubits))
+        else:
+            circuit.rz(beta, range(qubits))
+
+        for i in range(qubits):
+            j = (i + 1) % qubits
+            circuit.cp(-2 * beta, i, j)
+
+        for i in range(qubits):
+            circuit.rx(alpha, i)
+
+    dm = DensityMatrix.from_instruction(circuit)
+    circuit.measure(range(qubits), range(qubits))
+
+    return circuit, dm.data
+
+def process_qiskit_model(num_qubits, depth, noise_param, noise_type, num_circuits, numshots):
+    """Process the Qiskit model and return the data."""
+    circuits, density_matrices = generate_qiskit_circuits(num_qubits, depth, num_circuits,
+                                                        noise_param, noise_type)
+    avg_density_matrix = sum(density_matrices) / num_circuits
+    rho_squared = avg_density_matrix @ avg_density_matrix
+    purity = np.trace(rho_squared).real
+
+    simulator = AerSimulator()
+    transpiled_circuits = transpile(circuits, simulator, num_processes=-1)
+    results = simulator.run(transpiled_circuits, shots=numshots).result().get_counts()
+
+    # Aggregate counts from all circuits
+    counts = {}
+    for result in results:
+        for key, value in result.items():
+            counts[key] = counts.get(key, 0) + value
+
+    probs = calc_kinks_probability(counts)
+    mean = calc_kinks_mean(probs)
+    variances = sum((k - mean) ** 2 * v for k, v in probs.items())
+
+    return {
+        "density_matrix": avg_density_matrix,
+        "kinks_distribution": probs,
+        "mean_kinks": mean,
+        "var_kinks": variances,
+        "purity": purity
+    }
+
 
 def generate_data():
     models = [
@@ -191,35 +271,14 @@ def generate_data():
                         data_list.append(data)
 
                     elif "qiskit" in model:
-                        circuits, density_matrices = generate_qiskit_circuits(num_qubits, depth, num_circuits,
-                                                                              noise_param, noise_type)
-                        avg_density_matrix = sum(density_matrices) / num_circuits
-                        rho_squared = avg_density_matrix @ avg_density_matrix
-                        purity = np.trace(rho_squared).real
-                        simulator = AerSimulator()
-                        transpiled_circuits = transpile(circuits, simulator, num_processes=-1)
-                        results = simulator.run(transpiled_circuits, shots=numshots).result().get_counts()
-                        counts = {}
-                        for result in results:
-                            for key, value in result.items():
-                                if key in counts:
-                                    counts[key] += value
-                                else:
-                                    counts[key] = value
-                        probs = calc_kinks_probability(counts)
-                        mean = calc_kinks_mean(probs)
-                        variances = sum((k - mean) ** 2 * v for k, v in probs.items())
-                        data = {
-                            "density_matrix": avg_density_matrix,
-                            "kinks_distribution": probs,
-                            "mean_kinks": mean,
-                            "var_kinks": variances,
-                            "purity": purity,
+                        data = process_qiskit_model(num_qubits, depth, noise_param, noise_type,
+                                                    num_circuits, numshots)
+                        data.update({
                             "model": model,
                             "qubits": num_qubits,
                             "depth": depth,
                             "noise_param": noise_param
-                        }
+                        })
                         data_list.append(data)
 
                     df = pd.DataFrame(data_list)
