@@ -33,6 +33,7 @@
 # """
 import logging
 import os
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 import pandas as pd
@@ -521,7 +522,7 @@ import numpy as np
 from scipy.linalg import expm
 
 
-def tfim_momentum_trotter_single_k(k, tau, w=0.0, M=100):
+def tfim_momentum_trotter_single_k(k, tau, w=0.0, M=1):
     """
     Simulates Trotterized evolution of the TFIM in momentum space for a single momentum k,
     with each Trotter step subdivided into M smaller substeps (each of duration dt_sub = 1/M).
@@ -554,37 +555,36 @@ def tfim_momentum_trotter_single_k(k, tau, w=0.0, M=100):
         J = np.sin(theta_n)  # interaction strength (from HFM)
 
         # Effective parameters in momentum space for this step:
-        h_eff = 2 * (h - J * np.cos(k))  # coefficient in front of σ_z
-        delta_k = 2 * J * np.sin(k)  # coefficient in front of σ_x
-
+        # h_eff = 2 * (h - J * np.cos(k))  # coefficient in front of σ_z
+        # delta_k = 2 * J * np.sin(k)  # coefficient in front of σ_x
 
         # For each Trotter step, subdivide the evolution into M substeps.
         for m in range(M):
             # For the σ_z part: We want U_z = exp(-i * h_eff * dt_sub * σ_z)
             # Using the standard rotation formula: exp(-i φ σ_z/2)
-            theta_z = h_eff * dt_sub
-            U_z = np.array([[np.exp(-1j * theta_z / 2), 0],
-                            [0, np.exp(1j * theta_z / 2)]])
+            # theta_z = h_eff * dt_sub
+
+            H_fm = -1 * J * np.cos(k) * np.array([[1, 0], [0, -1]]) + (1 * J * np.sin(k)) * np.array([[0, 1], [1, 0]])
+            H_pm = 1 * h * np.array([[1, 0], [0, -1]])
+            U_z = expm(-1j * H_fm)
+
+            # U_z = np.array([[np.exp(-1j * theta_z / 2), 0],
+            #                 [0, np.exp(1j * theta_z / 2)]])
 
             # For the σ_x part: We want U_x = exp(-i * delta_k * dt_sub * σ_x)
-            theta_x = delta_k * dt_sub
-            U_x = np.cos(theta_x / 2) * np.eye(2) - 1j * np.sin(theta_x / 2) * np.array([[0, 1],
-                                                                                         [1, 0]])
+            # theta_x = delta_k * dt_sub
+            # U_x = np.cos(theta_x / 2) * np.eye(2) - 1j * np.sin(theta_x / 2) * np.array([[0, 1],
+            #                                                                              [1, 0]])
+            U_x = expm(-1j * H_pm)
             H_s = U_x @ U_z
-            hs.append(H_s)
 
-            # diagonalize H_s
-            V = np.linalg.eigvals(H_s)
-
-            vs.append(V)
-            # plot the eigenstates
-            plt.plot(np.abs(V))
-
+            com = U_x @ U_z - U_z @ U_x
 
             # Apply the substep evolution: first U_z then U_x.
+            # rho = U_z @ (U_x @ rho @ U_x.conj().T) @ U_z.conj().T
             rho = U_x @ (U_z @ rho @ U_z.conj().T) @ U_x.conj().T
 
-    return rho, vs, hs
+    return rho  # , vs, hs
 
 
 def tfim_momentum_trotter(ks, tau, w):
@@ -594,6 +594,7 @@ def tfim_momentum_trotter(ks, tau, w):
     with Pool() as pool:
         results = pool.starmap(tfim_momentum_trotter_single_k, [(k, tau, w) for k in ks])
     return results
+
 
 def process_tfim_momentum_trotter(ks, depth, num_qubits, noise):
     """
@@ -624,6 +625,42 @@ def process_tfim_momentum_trotter(ks, depth, num_qubits, noise):
         "purity": purity
     }
 
+
+def compute_kink_prob(args):
+    k, tau, m = args
+    rho = tfim_momentum_trotter_single_k(k=k, tau=tau, w=0.0, M=m)
+    psi_k = np.array([np.sin(k / 2), np.cos(k / 2)])  # Excited state
+    kink_prob = np.abs(np.dot(psi_k, np.dot(rho, psi_k)))
+    return kink_prob
+
+
+def plot_pk_vs_k(m=10):
+    k_values = k_f(50)
+    k_values = np.append(np.append(k_values, 0), np.pi)
+    k_values.sort()
+    tau_values = [0, 1, 5, 10, 15, 1000]  # Test different τ values
+
+    for tau in tau_values:
+        # Prepare arguments for parallel execution
+        args = [(k, tau, m) for k in k_values]
+
+        # Parallel computation of kink probabilities
+        with ProcessPoolExecutor() as executor:
+            kink_probs = list(executor.map(compute_kink_prob, args))
+
+        plt.plot(k_values, kink_probs, label=f'steps = {tau}')
+
+    # Plot reference: Sudden quench (τ=1) kink probability
+    plt.plot(k_values, np.cos(k_values / 2) ** 2, '--', label=r'$\cos^2(k/2)$', color='black')
+
+    plt.xlabel('k')
+    plt.ylabel('Kink Probability')
+    plt.title(f'M={m}')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+
 # Qiskit Circuit Simulation Functions
 def generate_single_circuit_parallel(params):
     """
@@ -648,6 +685,7 @@ def generate_single_circuit_parallel(params):
     circuit.measure(range(qubits), range(qubits))
     return circuit, dm.data
 
+
 def generate_qiskit_circuits(qubits, steps, num_circuits_per_step, noise_std=0.0, noise_method='global'):
     """
     Generate multiple Qiskit circuits in parallel.
@@ -669,6 +707,7 @@ def generate_qiskit_circuits(qubits, steps, num_circuits_per_step, noise_std=0.0
         results = pool.map(generate_single_circuit_parallel, params)
     circuits, density_matrices = zip(*results)
     return list(circuits), list(density_matrices)
+
 
 def process_qiskit_model(num_qubits, depth, noise_param, noise_type, num_circuits, numshots):
     """
@@ -695,29 +734,31 @@ def process_qiskit_model(num_qubits, depth, noise_param, noise_type, num_circuit
     }
 
 
-def plot_pk_vs_k():
-    k_values = k_f(50) + [0]
-    tau_values = [0, 1, 100,1000]  # Test different τ values
-
-    for tau in tau_values:
-        kink_probs = []
-        for k in k_values:
-            rho = tfim_momentum_trotter_single_k(k, tau, w=0.0)
-            psi_k = np.array([np.sin(k / 2), np.cos(k / 2)])  # Excited state
-            kink_prob = np.abs(np.dot(psi_k, np.dot(rho, psi_k)))
-            kink_probs.append(kink_prob)
-
-        plt.plot(k_values, kink_probs, label=f'steps = {tau}')
-
-    # Plot reference: Sudden quench (τ=1) kink probability
-    plt.plot(k_values, np.cos(k_values / 2) ** 2, '--', label=r'$\cos^2(k/2)$', color='black')
-
-    plt.xlabel('k')
-    plt.ylabel('Kink Probability')
-    plt.title('Kink Probability vs Momentum k for Different τ Values')
-    plt.legend()
-    plt.grid(True)
-    plt.show()
+# def plot_pk_vs_k(m=10):
+#     k_values = k_f(50)
+#     k_values = np.append(np.append(k_values, 0),np.pi)
+#     k_values.sort()
+#     tau_values = [0, 1, 100,1000]  # Test different τ values
+#
+#     for tau in tau_values:
+#         kink_probs = []
+#         for k in k_values:
+#             rho = tfim_momentum_trotter_single_k(k=k, tau=tau, w=0.0, M=m)
+#             psi_k = np.array([np.sin(k / 2), np.cos(k / 2)])  # Excited state
+#             kink_prob = np.abs(np.dot(psi_k, np.dot(rho, psi_k)))
+#             kink_probs.append(kink_prob)
+#
+#         plt.plot(k_values, kink_probs, label=f'steps = {tau}')
+#
+#     # Plot reference: Sudden quench (τ=1) kink probability
+#     plt.plot(k_values, np.cos(k_values / 2) ** 2, '--', label=r'$\cos^2(k/2)$', color='black')
+#
+#     plt.xlabel('k')
+#     plt.ylabel('Kink Probability')
+#     plt.title(f'M={m}')
+#     plt.legend()
+#     plt.grid(True)
+#     plt.show()
 
 
 def plot_density_matrices_comparison(k_values, tau_values):
@@ -765,8 +806,7 @@ def plot_density_matrices_comparison(k_values, tau_values):
     return fig
 
 
-
-def plot_mean_kinks_comparison(num_qubits=4, step_range=range(0, 31,3),
+def plot_mean_kinks_comparison(num_qubits=4, step_range=range(0, 31, 3),
                                momentum_noise=0.0,
                                qiskit_noise_param=0.0, qiskit_noise_type='global',
                                num_circuits=10, numshots=100000):
@@ -809,8 +849,9 @@ def plot_mean_kinks_comparison(num_qubits=4, step_range=range(0, 31,3),
 
     # Plot the results
     plt.figure(figsize=(10, 6))
-    plt.plot(list(step_range), [i/num_qubits for i in momentum_means], 'o-', label=f'Momentum (noise={momentum_noise})')
-    plt.plot(list(step_range), [i/num_qubits for i in qiskit_means], 'x-',
+    plt.plot(list(step_range), [i / num_qubits for i in momentum_means], 'o-',
+             label=f'Momentum (noise={momentum_noise})')
+    plt.plot(list(step_range), [i / num_qubits for i in qiskit_means], 'x-',
              label=f'Qiskit ({qiskit_noise_type}, noise={qiskit_noise_param})')
 
     plt.xlabel('Number of Steps')
@@ -947,6 +988,7 @@ def plot_kinks_vs_steps_for_sizes(system_sizes, step_range, numshots=10000, num_
     plt.tight_layout()
     return plt.gcf()
 
+
 def plot_kinks_vs_steps_for_sizes_momentum(system_sizes, step_range, momentum_noise=0.0):
     """
     Plot the mean number of kinks in the discrete momentum model with no noise as a function of steps
@@ -992,7 +1034,7 @@ def plot_kinks_vs_steps_for_sizes_momentum(system_sizes, step_range, momentum_no
         all_means[size] = means
 
         # Plot scaled data (kinks/N)
-        plt.plot(list(step_range), [m/size for m in means], 'o-', label=f'N = {size}')
+        plt.plot(list(step_range), [m / size for m in means], 'o-', label=f'N = {size}')
 
     plt.xlabel('Number of Steps')
     plt.ylabel('Mean Kinks/N')
@@ -1038,20 +1080,20 @@ def plot_kinks_vs_steps_lz_evolution(system_sizes, step_range):
             # Calculate probabilities for each k
             pks = np.array([
                 np.abs(np.dot(
-                    np.array([np.sin(k/2), np.cos(k/2)]),
+                    np.array([np.sin(k / 2), np.cos(k / 2)]),
                     np.dot(
                         result.y[:, -1].reshape(2, 2),
-                        np.array([[np.sin(k/2)], [np.cos(k/2)]])
+                        np.array([[np.sin(k / 2)], [np.cos(k / 2)]])
                     )
                 ))[0]
                 for k, result in zip(ks, ks_solutions)
             ])
 
             # Clean up small values
-            pks = np.where(pks < epsilon/100, 0, pks)
+            pks = np.where(pks < epsilon / 100, 0, pks)
 
             # Calculate kinks distribution and mean
-            kinks_vals = np.arange(0, size+1, 2)
+            kinks_vals = np.arange(0, size + 1, 2)
             kinks_distribution = calc_kink_probabilities(pks, kinks_vals)
             mean_kinks = np.sum(kinks_distribution * kinks_vals)
 
@@ -1061,7 +1103,7 @@ def plot_kinks_vs_steps_lz_evolution(system_sizes, step_range):
         all_means[size] = means
 
         # Plot scaled data (kinks/N)
-        plt.plot(list(step_range), [m/size for m in means], 'o-', label=f'N = {size}')
+        plt.plot(list(step_range), [m / size for m in means], 'o-', label=f'N = {size}')
 
     plt.xlabel('Number of Steps')
     plt.ylabel('Mean Kinks/N')
@@ -1074,12 +1116,13 @@ def plot_kinks_vs_steps_lz_evolution(system_sizes, step_range):
 
 
 from matplotlib import pyplot as plt
+
 if __name__ == "__main__":
-    # p = plot_mean_kinks_comparison(num_qubits=10, step_range=range(0, 31,2),
-    #                            momentum_noise=0.0,
-    #                            qiskit_noise_param=0.0, qiskit_noise_type='global',
-    #                            num_circuits=2, numshots=10)
-    # p.show()
+    p = plot_mean_kinks_comparison(num_qubits=8, step_range=range(0, 31,5),
+                               momentum_noise=0.0,
+                               qiskit_noise_param=0.0, qiskit_noise_type='global',
+                               num_circuits=2, numshots=1000)
+    p.show()
 
     # plot_pk_vs_k()
 
@@ -1140,13 +1183,12 @@ if __name__ == "__main__":
     # plt.grid(True)
     # plt.legend()
     # plt.show()
-
-    rho, vs, hs = tfim_momentum_trotter_single_k(np.pi/8, 100, 0, 1)
-    print(hs[-1])
-    plt.plot(np.angle(np.array(vs)[:, 1]))
-    plt.plot(np.angle(np.array(vs)[:, 0]))
-    plt.show()
-
-
-
+    # for k in np.linspace(0, np.pi, 20):
+    #     rho = tfim_momentum_trotter_single_k(k, 100, 0, 1)
+    # rho, vs, hs = tfim_momentum_trotter_single_k(np.pi/8, 100, 0, 1)
+    # print(hs[-1])
+    # plt.plot(np.angle(np.array(vs)[:, 1]))
+    # plt.plot(np.angle(np.array(vs)[:, 0]))
+    # plt.show()
+    # plot_pk_vs_k(1)
 
