@@ -933,7 +933,7 @@ def plot_noise_effects_comparison(num_qubits=4, step_range=range(0, 31, 3),
         # Average the momentum results
         momentum_mean = np.mean([r["mean_kinks"] for r in momentum_results_list])
         momentum_var = np.mean([r["var_kinks"] for r in momentum_results_list])
-        momentum_means.append(momentum_mean)
+        momentum_means.append(momentum_mean) 
         momentum_vars.append(momentum_var)
 
         # Process Qiskit model with these angles
@@ -978,45 +978,6 @@ def plot_noise_effects_comparison(num_qubits=4, step_range=range(0, 31, 3),
     
     return fig, mean_filename, var_filename
 
-
-if __name__ == "__main__":
-    # Define base parameters
-    num_qubits=4
-    step_range=range(0, 31, 5)
-    numshots=10000  # Reduced number of shots
-    num_circuits=100  # Increased number of circuits
-    interactive=False  # Default to non-interactive mode
-    
-    # Define parameter combinations to plot
-    parameter_sets = [
-        {"noise_param": 0.05, "label": "noise005"},
-        {"noise_param": 0.1, "label": "noise01"},
-        {"noise_param": 0.2, "label": "noise02"}
-    ]
-    
-    # Generate plots for each parameter set
-    for params in parameter_sets:
-        print(f"\nGenerating plots for noise={params['noise_param']}")
-        
-        # Create and show the plot with noise comparison
-        fig, mean_filename, var_filename = plot_noise_effects_comparison(
-            num_qubits=num_qubits,
-            step_range=step_range,
-            noise_param=params['noise_param'],
-            num_circuits=num_circuits,
-            numshots=numshots,
-            interactive=interactive
-        )
-        
-        # Save the plots using the generated filenames
-        plt.savefig(mean_filename)
-        plt.savefig(var_filename)
-        print(f"Plots saved as: {mean_filename} and {var_filename}")
-        
-        # Close the figure to free memory
-        plt.close(fig)
-    
-    print("\nAll plots generated successfully!")
 
 
 def plot_momentum_qiskit_comparison(num_qubits=4, step_range=range(0, 31, 3),
@@ -1080,3 +1041,44 @@ def plot_momentum_qiskit_comparison(num_qubits=4, step_range=range(0, 31, 3),
         'momentum_means': momentum_means,
         'qiskit_means': qiskit_means
     }
+
+
+if __name__ == "__main__":
+    # Define base parameters
+    num_qubits=4
+    step_range=range(0, 31, 3)
+    numshots=100000  # Reduced number of shots
+    num_circuits=2  # Increased number of circuits
+    interactive=False  # Default to non-interactive mode
+    
+    # Define parameter combinations to plot
+    parameter_sets = [
+        {"noise_param": 0.0, "label": "no_noise"}
+        # {"noise_param": 0.05, "label": "noise005"},
+        # {"noise_param": 0.1, "label": "noise01"},
+        # {"noise_param": 0.2, "label": "noise02"}
+    ]
+    
+    # Generate plots for each parameter set
+    for params in parameter_sets:
+        print(f"\nGenerating plots for noise={params['noise_param']}")
+        
+        # Create and show the plot with noise comparison
+        fig, mean_filename, var_filename = plot_noise_effects_comparison(
+            num_qubits=num_qubits,
+            step_range=step_range,
+            noise_param=params['noise_param'],
+            num_circuits=num_circuits,
+            numshots=numshots,
+            interactive=interactive
+        )
+        
+        # Save the plots using the generated filenames
+        plt.savefig(mean_filename)
+        plt.savefig(var_filename)
+        print(f"Plots saved as: {mean_filename} and {var_filename}")
+        
+        # Close the figure to free memory
+        plt.close(fig)
+    
+    print("\nAll plots generated successfully!")
