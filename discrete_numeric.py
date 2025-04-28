@@ -1,3 +1,22 @@
+import datetime
+import logging
+import os
+from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import Pool
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from qiskit import QuantumCircuit, transpile
+from qiskit.quantum_info import DensityMatrix
+from qiskit_aer import AerSimulator
+from scipy.linalg import expm
+from tqdm import tqdm
+
+from functions import (calc_kink_probabilities, calc_kinks_mean,
+                       calc_kinks_probability, epsilon, k_f,
+                       noisy_lz_time_evolution)
+
 # """
 # I would like to generate data for several models:
 # The models are-
@@ -31,19 +50,9 @@
 # I would like to write a code that generates this data for each case and saves it to files.
 # I already have some of the functions that calculate the data for each case bur I need to modify for that purpose.
 # """
-import logging
-import os
-from concurrent.futures import ProcessPoolExecutor
 
-import numpy as np
-import pandas as pd
-from tqdm import tqdm
-from functions import k_f, epsilon, calc_kink_probabilities, calc_kinks_probability, \
-    calc_kinks_mean, noisy_lz_time_evolution
-from qiskit.quantum_info import DensityMatrix
-from qiskit_aer import AerSimulator
-from qiskit import QuantumCircuit, transpile
-from scipy.linalg import expm
+
+
 #
 # # Set Qiskit logging level to WARNING to suppress INFO and DEBUG messages
 # qiskit_logger = logging.getLogger('qiskit')
@@ -512,29 +521,21 @@ from scipy.linalg import expm
 #
 #     progress_bar.close()
 
-import numpy as np
-from multiprocessing import Pool
-from qiskit import QuantumCircuit, transpile
-from qiskit_aer import AerSimulator
-from qiskit.quantum_info import DensityMatrix
-
-import numpy as np
-from scipy.linalg import expm
 
 
-def tfim_momentum_trotter_single_k(k, tau, w=0.0, M=1):
+
+def tfim_momentum_trotter_single_k(k, tau, beta, alpha):
     """
-    Simulates Trotterized evolution of the TFIM in momentum space for a single momentum k,
-    with each Trotter step subdivided into M smaller substeps (each of duration dt_sub = 1/M).
-
+    Simulates Trotterized evolution of the TFIM in momentum space for a single momentum k.
+    
     The evolution is performed in Nambu space, with the initial state chosen as |↓⟩
     (represented as [0, 1]^T, i.e. the ground state for g=0).
 
     Parameters:
-      k   : momentum (in radians)
-      tau : total number of Trotter steps (each with total time = 1)
-      w   : noise parameter (unused in V1)
-      M   : number of substeps per Trotter step (thus, dt_sub = 1/M)
+      k     : momentum (in radians)
+      tau   : total number of Trotter steps
+      beta  : array of angles for ZZ interaction terms
+      alpha : array of angles for X field terms
 
     Returns:
       rho : the final density matrix for momentum k.
@@ -542,71 +543,66 @@ def tfim_momentum_trotter_single_k(k, tau, w=0.0, M=1):
     # Initial state |↓⟩ is represented as [0, 1]^T; hence its density matrix:
     rho = np.array([[0, 0], [0, 1]], dtype=complex)
 
-    # dt for each substep:
-    dt_sub = 1.0 / M
-
-    vs = []
-    hs = []
     # Loop over each Trotter step
-    for n in range(1, tau + 1):
-        # Compute the step-dependent angle theta_n (for the n-th Trotter step)
-        theta_n = (np.pi / 2) * n / (tau + 1)
-        h = np.cos(theta_n)  # transverse field part (from HPM)
-        J = np.sin(theta_n)  # interaction strength (from HFM)
+    for n in range(tau):
+        # Get the angles for this step
+        h = alpha[n]  # transverse field part
+        J = beta[n]   # interaction strength
 
-        # Effective parameters in momentum space for this step:
-        # h_eff = 2 * (h - J * np.cos(k))  # coefficient in front of σ_z
-        # delta_k = 2 * J * np.sin(k)  # coefficient in front of σ_x
+        # Hamiltonian terms
+        H_fm = -1 * J * np.cos(k) * np.array([[1, 0], [0, -1]]) + (1 * J * np.sin(k)) * np.array([[0, 1], [1, 0]])
+        H_pm = 1 * h * np.array([[1, 0], [0, -1]])
+        
+        # Evolution operators
+        U_z = expm(-1j * H_fm)
+        U_x = expm(-1j * H_pm)
 
-        # For each Trotter step, subdivide the evolution into M substeps.
-        for m in range(M):
-            # For the σ_z part: We want U_z = exp(-i * h_eff * dt_sub * σ_z)
-            # Using the standard rotation formula: exp(-i φ σ_z/2)
-            # theta_z = h_eff * dt_sub
+        # Apply the evolution
+        rho = U_x @ (U_z @ rho @ U_z.conj().T) @ U_x.conj().T
 
-            H_fm = -1 * J * np.cos(k) * np.array([[1, 0], [0, -1]]) + (1 * J * np.sin(k)) * np.array([[0, 1], [1, 0]])
-            H_pm = 1 * h * np.array([[1, 0], [0, -1]])
-            U_z = expm(-1j * H_fm)
-
-            # U_z = np.array([[np.exp(-1j * theta_z / 2), 0],
-            #                 [0, np.exp(1j * theta_z / 2)]])
-
-            # For the σ_x part: We want U_x = exp(-i * delta_k * dt_sub * σ_x)
-            # theta_x = delta_k * dt_sub
-            # U_x = np.cos(theta_x / 2) * np.eye(2) - 1j * np.sin(theta_x / 2) * np.array([[0, 1],
-            #                                                                              [1, 0]])
-            U_x = expm(-1j * H_pm)
-            H_s = U_x @ U_z
-
-            com = U_x @ U_z - U_z @ U_x
-
-            # Apply the substep evolution: first U_z then U_x.
-            # rho = U_z @ (U_x @ rho @ U_x.conj().T) @ U_z.conj().T
-            rho = U_x @ (U_z @ rho @ U_z.conj().T) @ U_x.conj().T
-
-    return rho  # , vs, hs
+    return rho
 
 
-def tfim_momentum_trotter(ks, tau, w):
+def tfim_momentum_trotter(ks, tau, w=0.0, betas=None, alphas=None):
     """
     Parallelize Trotterized density matrix evolution for all k values.
+    Uses the provided angles or generates them if not provided.
     """
+    if betas is None or alphas is None:
+        # Generate angles following Qiskit's convention
+        base_angles = (np.pi / 2) * np.arange(1, tau + 1) / (tau + 1)
+        base_angles = base_angles[:, np.newaxis]
+        noisy_base_angles = base_angles + w * np.random.randn(tau, 1)
+        
+        # Calculate beta and alpha arrays
+        betas = -np.sin(noisy_base_angles).flatten()
+        alphas = -np.cos(noisy_base_angles).flatten()
+    
     with Pool() as pool:
-        results = pool.starmap(tfim_momentum_trotter_single_k, [(k, tau, w) for k in ks])
+        results = pool.starmap(tfim_momentum_trotter_single_k, 
+                             [(k, tau, betas, alphas) for k in ks])
     return results
 
 
-def process_tfim_momentum_trotter(ks, depth, num_qubits, noise):
-    """
-    Process the TFIM in momentum space with Trotter discretization.
-    """
-    solutions = tfim_momentum_trotter(ks, depth, noise)
+def process_tfim_momentum_trotter(ks, depth, num_qubits, noise, betas=None, alphas=None):
+    """Process the TFIM in momentum space with Trotter discretization."""
+    solutions = tfim_momentum_trotter(ks, depth, noise, betas, alphas)
     tensor_product = solutions[0]
     for rho in solutions[1:]:
         tensor_product = np.kron(tensor_product, rho)
     density_matrix = tensor_product
-    rho2 = density_matrix @ density_matrix
-    purity = np.trace(rho2).real
+    
+    # Calculate purity
+    try:
+        rho2 = density_matrix @ density_matrix
+        purity = np.trace(rho2).real
+        if not np.isfinite(purity):
+            purity = 0.0
+    except Exception as e:
+        print(f"Warning: Error calculating purity: {str(e)}")
+        purity = 0.0
+    
+    # Calculate kink probabilities
     pks = np.array([
         np.abs(np.dot(
             np.array([np.sin(k / 2), np.cos(k / 2)]),
@@ -614,21 +610,36 @@ def process_tfim_momentum_trotter(ks, depth, num_qubits, noise):
         ))[0] for k, solution in zip(ks, solutions)
     ])
     pks = np.where(pks < 1e-10, 0, pks)
+    
+    # Calculate kinks distribution
     kinks_vals = np.arange(0, num_qubits + 1, 2)
     distribution = calc_kink_probabilities(pks, kinks_vals)
     kinks_distribution = {k: v for k, v in zip(kinks_vals, distribution)}
+    
+    # Calculate mean and variance
     mean_kinks = calc_kinks_mean(kinks_distribution)
+    second_moment = sum(k**2 * v for k, v in kinks_distribution.items())
+    var_kinks = second_moment - mean_kinks**2
+
     return {
         "density_matrix": density_matrix,
         "kinks_distribution": kinks_distribution,
         "mean_kinks": mean_kinks,
+        "var_kinks": var_kinks,
         "purity": purity
     }
 
 
 def compute_kink_prob(args):
-    k, tau, m = args
-    rho = tfim_momentum_trotter_single_k(k=k, tau=tau, w=0.0, M=m)
+    """Compute kink probability for a given k and tau value."""
+    k, tau, w = args
+    # Calculate angles (same as in tfim_momentum_trotter)
+    base_angles = (np.pi / 2) * np.arange(1, tau + 1) / (tau + 1)
+    noisy_angles = base_angles + w * np.random.randn(tau)
+    betas = -np.sin(noisy_angles)
+    alphas = -np.cos(noisy_angles)
+    
+    rho = tfim_momentum_trotter_single_k(k=k, tau=tau, beta=betas, alpha=alphas)
     psi_k = np.array([np.sin(k / 2), np.cos(k / 2)])  # Excited state
     kink_prob = np.abs(np.dot(psi_k, np.dot(rho, psi_k)))
     return kink_prob
@@ -672,112 +683,168 @@ def generate_single_circuit_parallel(params):
     for step in range(steps):
         beta = betas[step, circuit_idx]
         alpha = alphas[step, circuit_idx]
+        
+        # Apply RZZ gates in parallel between non-overlapping pairs
+        # First group: even-to-odd pairs
+        for i in range(0, qubits, 2):
+            j = (i + 1) % qubits
+            circuit.rzz(beta, i, j)
+        
+        # Second group: odd-to-even pairs
+        for i in range(1, qubits, 2):
+            j = (i + 1) % qubits
+            circuit.rzz(beta, i, j)
+        
+        # Apply dephasing noise as RZ gates if needed
         if noise_method == 'dephasing':
             circuit.rz(noisy_betas[step, circuit_idx], range(qubits))
-        else:
-            circuit.rz(beta, range(qubits))
+        
+        # Apply RX gates for transverse field
         for i in range(qubits):
-            j = (i + 1) % qubits
-            circuit.cp(-2 * beta, i, j)  # Controlled phase for interaction
-        for i in range(qubits):
-            circuit.rx(alpha, i)  # Transverse field
+            circuit.rx(alpha, i)
+    
     dm = DensityMatrix.from_instruction(circuit)
     circuit.measure(range(qubits), range(qubits))
     return circuit, dm.data
 
 
-def generate_qiskit_circuits(qubits, steps, num_circuits_per_step, noise_std=0.0, noise_method='global'):
+def generate_qiskit_circuits(qubits, steps, num_circuits_per_step, noise_std=0.0, noise_method='global', betas=None, alphas=None):
     """
     Generate multiple Qiskit circuits in parallel.
     """
-    base_angles = (np.pi / 2) * np.arange(1, steps + 1) / (steps + 1)
-    base_angles = base_angles[:, np.newaxis]
-    noisy_base_angles = base_angles + noise_std * np.random.randn(steps, num_circuits_per_step)
-    if noise_method == 'global':
-        betas = -np.sin(noisy_base_angles)
-        alphas = -np.cos(noisy_base_angles)
+    if betas is None or alphas is None:
+        # Generate angles following Qiskit's convention
+        base_angles = (np.pi / 2) * np.arange(1, steps + 1) / (steps + 1)
+        base_angles = base_angles[:, np.newaxis]
+        noisy_base_angles = base_angles + noise_std * np.random.randn(steps, num_circuits_per_step)
+        
+        if noise_method == 'global':
+            betas = -np.sin(noisy_base_angles)
+            alphas = -np.cos(noisy_base_angles)
+        else:
+            base_angles = np.tile(base_angles, (1, num_circuits_per_step))
+            betas = -np.sin(base_angles)
+            alphas = -np.cos(base_angles)
+            noisy_betas = -np.sin(noisy_base_angles)
     else:
-        base_angles = np.tile(base_angles, (1, num_circuits_per_step))
-        betas = -np.sin(base_angles)
-        alphas = -np.cos(base_angles)
-        noisy_betas = -np.sin(noisy_base_angles)
+        # Use provided angles
+        betas = np.tile(betas[:, np.newaxis], (1, num_circuits_per_step))
+        alphas = np.tile(alphas[:, np.newaxis], (1, num_circuits_per_step))
+        if noise_method == 'dephasing':
+            noisy_base_angles = np.arcsin(-betas) + noise_std * np.random.randn(steps, num_circuits_per_step)
+            noisy_betas = -np.sin(noisy_base_angles)
+    
     params = [(qubits, steps, i, betas, alphas, noisy_betas if noise_method == 'dephasing' else None, noise_method)
               for i in range(num_circuits_per_step)]
+    
     with Pool() as pool:
         results = pool.map(generate_single_circuit_parallel, params)
+    
     circuits, density_matrices = zip(*results)
     return list(circuits), list(density_matrices)
 
 
-def process_qiskit_model(num_qubits, depth, noise_param, noise_type, num_circuits, numshots):
-    """
-    Process the Qiskit model and return simulation results.
-    """
-    circuits, density_matrices = generate_qiskit_circuits(num_qubits, depth, num_circuits, noise_param, noise_type)
-    avg_density_matrix = sum(density_matrices) / num_circuits
-    rho_squared = avg_density_matrix @ avg_density_matrix
-    purity = np.trace(rho_squared).real
+def run_qiskit_simulation(qubits, steps, noise_param, noise_type, num_circuits, numshots, betas=None, alphas=None):
+    """Run Qiskit simulation and return results."""
+    circuits, density_matrices = generate_qiskit_circuits(
+        qubits=qubits,
+        steps=steps,
+        num_circuits_per_step=num_circuits,
+        noise_std=noise_param,
+        noise_method=noise_type,
+        betas=betas,
+        alphas=alphas
+    )
+    
     simulator = AerSimulator()
-    transpiled_circuits = transpile(circuits, simulator)
-    results = simulator.run(transpiled_circuits, shots=numshots).result().get_counts()
-    counts = {}
-    for result in results:
-        for key, value in result.items():
-            counts[key] = counts.get(key, 0) + value
-    probs = calc_kinks_probability(counts)
-    mean = calc_kinks_mean(probs)
-    return {
-        "density_matrix": avg_density_matrix,
-        "kinks_distribution": probs,
-        "mean_kinks": mean,
-        "purity": purity
-    }
+    transpiled_circuits = transpile(circuits, simulator, num_processes=-1)
+    
+    job_result = simulator.run(transpiled_circuits, shots=numshots).result()
+    
+    results = []
+    for i in range(len(circuits)):
+        results.append({
+            'counts': job_result.get_counts(i),
+            'density_matrix': density_matrices[i]
+        })
+    
+    return results
 
 
-# def plot_pk_vs_k(m=10):
-#     k_values = k_f(50)
-#     k_values = np.append(np.append(k_values, 0),np.pi)
-#     k_values.sort()
-#     tau_values = [0, 1, 100,1000]  # Test different τ values
-#
-#     for tau in tau_values:
-#         kink_probs = []
-#         for k in k_values:
-#             rho = tfim_momentum_trotter_single_k(k=k, tau=tau, w=0.0, M=m)
-#             psi_k = np.array([np.sin(k / 2), np.cos(k / 2)])  # Excited state
-#             kink_prob = np.abs(np.dot(psi_k, np.dot(rho, psi_k)))
-#             kink_probs.append(kink_prob)
-#
-#         plt.plot(k_values, kink_probs, label=f'steps = {tau}')
-#
-#     # Plot reference: Sudden quench (τ=1) kink probability
-#     plt.plot(k_values, np.cos(k_values / 2) ** 2, '--', label=r'$\cos^2(k/2)$', color='black')
-#
-#     plt.xlabel('k')
-#     plt.ylabel('Kink Probability')
-#     plt.title(f'M={m}')
-#     plt.legend()
-#     plt.grid(True)
-#     plt.show()
+def count_kinks(bitstring: str) -> int:
+    """Count the number of kinks in a quantum state string (PBC)."""
+    count = 0
+    n = len(bitstring)
+    if n == 0: # Handle empty string case
+        return 0
+    for i in range(n): # Loop from 0 to N-1
+        if bitstring[i] != bitstring[(i + 1) % n]: # Use modulo for periodic boundary
+            count += 1
+    return count
 
 
-def plot_density_matrices_comparison(k_values, tau_values):
-    """
-    Creates a grid of density matrix plots for different k and tau values.
+def process_qiskit_model(num_qubits, depth, noise_param, noise_type, num_circuits, numshots, betas=None, alphas=None):
+    """Process Qiskit simulation results and calculate statistics."""
+    try:
+        # Run the simulation
+        results = run_qiskit_simulation(
+            qubits=num_qubits,
+            steps=depth,
+            noise_param=noise_param,
+            noise_type=noise_type,
+            num_circuits=num_circuits,
+            numshots=numshots,
+            betas=betas,
+            alphas=alphas
+        )
+        
+        # Aggregate counts from all circuits
+        total_counts = {}
+        for result in results:
+            counts = result['counts']  # Access counts from our dictionary
+            for state, count in counts.items():
+                total_counts[state] = total_counts.get(state, 0) + count
+        
+        # Calculate probabilities
+        total_shots = sum(total_counts.values())
+        probabilities = {state: count/total_shots for state, count in total_counts.items()}
+        
+        # Calculate mean and variance of kinks
+        kink_counts = [count_kinks(state) for state in probabilities.keys()]
+        mean_kinks = sum(k * p for k, p in zip(kink_counts, probabilities.values()))
+        var_kinks = sum((k - mean_kinks)**2 * p for k, p in zip(kink_counts, probabilities.values()))
+        
+        return {
+            "mean_kinks": mean_kinks,
+            "var_kinks": var_kinks,
+            "probabilities": probabilities
+        }
+        
+    except Exception as e:
+        print(f"Error in process_qiskit_model: {str(e)}")
+        return {
+            "mean_kinks": 0.0,
+            "var_kinks": 0.0,
+            "probabilities": {}
+        }
 
-    Parameters:
-    -----------
-    k_values : list of float
-        List of momentum values to plot
-    tau_values : list of int
-        List of step values to plot
-    """
-    fig, axs = plt.subplots(len(tau_values), len(k_values), figsize=(4 * len(k_values), 4 * len(tau_values)))
 
+def plot_density_matrices_comparison(k_values, tau_values, w=0.0):
+    """Plot density matrices for different k and tau values."""
+    fig, axs = plt.subplots(len(tau_values), len(k_values), 
+                           figsize=(4*len(k_values), 4*len(tau_values)))
+    
     for i, tau in enumerate(tau_values):
+        # Generate angles with noise
+        base_angles = (np.pi / 2) * np.arange(1, tau + 1) / (tau + 1)
+        base_angles = base_angles[:, np.newaxis]
+        noisy_base_angles = base_angles + w * np.random.randn(tau, 1)
+        betas = -np.sin(noisy_base_angles).flatten()
+        alphas = -np.cos(noisy_base_angles).flatten()
+        
         for j, k in enumerate(k_values):
-            rho = tfim_momentum_trotter_single_k(k, tau, w=0.0)
-
+            rho = tfim_momentum_trotter_single_k(k, tau, betas, alphas)
+            
             if len(tau_values) == 1 and len(k_values) == 1:
                 ax = axs
             elif len(tau_values) == 1:
@@ -786,409 +853,230 @@ def plot_density_matrices_comparison(k_values, tau_values):
                 ax = axs[i]
             else:
                 ax = axs[i, j]
-
-            # Display as a 2×2 grid with values
+                
             im = ax.imshow(np.abs(rho), cmap='viridis', vmin=0, vmax=1)
             ax.set_title(f'k={k:.2f}, τ={tau}')
             ax.set_xticks([0, 1])
             ax.set_yticks([0, 1])
             ax.set_xticklabels(['|0⟩', '|1⟩'])
             ax.set_yticklabels(['⟨0|', '⟨1|'])
-
-            # Show matrix values
+            
             for ii in range(2):
                 for jj in range(2):
                     ax.text(jj, ii, f'{rho[ii, jj]:.3f}',
-                            ha='center', va='center',
-                            color='white' if np.abs(rho[ii, jj]) > 0.5 else 'black')
-
+                           ha='center', va='center',
+                           color='white' if np.abs(rho[ii, jj]) > 0.5 else 'black')
+    
     plt.tight_layout()
     return fig
 
 
-def plot_mean_kinks_comparison(num_qubits=4, step_range=range(0, 31, 3),
-                               momentum_noise=0.0,
-                               qiskit_noise_param=0.0, qiskit_noise_type='global',
-                               num_circuits=10, numshots=100000):
+def plot_noise_effects_comparison(num_qubits=4, step_range=range(0, 31, 3),
+                             noise_param=0.0,
+                             num_circuits=2, numshots=100000, interactive=False):
     """
-    Plot comparison of mean kinks between Qiskit and momentum models across different steps.
+    Plot comparison of mean kinks and variance between Qiskit and momentum models with noise effects.
+    
+    Compares how noise affects the mean number of kinks and variance in both the momentum space
+    and Qiskit circuit implementations of the TFIM model, using the same noise parameter
+    and angles for both models.
 
     Parameters:
     -----------
     num_qubits : int
-        Number of qubits to simulate
+        Number of qubits to simulate (default: 4)
     step_range : range or list
         Range of steps to simulate and plot
-    momentum_noise : float
-        Noise parameter for momentum model
-    momentum_dt : int
-        Number of substeps per Trotter step in momentum model
-    qiskit_noise_param : float
-        Noise parameter for Qiskit model
-    qiskit_noise_type : str
-        Type of noise for Qiskit ('global' or 'dephasing')
+    noise_param : float
+        Noise parameter for both models
     num_circuits : int
         Number of circuits to average in Qiskit simulation
     numshots : int
         Number of shots per circuit in Qiskit simulation
+    interactive : bool
+        Whether to enable interactive mode for the plot (default: False)
     """
+    if interactive:
+        plt.ion()  # Enable interactive mode if requested
+    else:
+        plt.ioff()  # Disable interactive mode by default
+
     ks = k_f(num_qubits)
 
     momentum_means = []
+    momentum_vars = []
     qiskit_means = []
+    qiskit_vars = []
 
+    # Progress bar for steps
+    steps_progress = tqdm(step_range, desc="Processing steps")
+    for steps in steps_progress:
+        steps_progress.set_description(f"Processing {steps} steps")
+        
+        # Generate angles once for both models
+        base_angles = (np.pi / 2) * np.arange(1, steps + 1) / (steps + 1)
+        base_angles = base_angles[:, np.newaxis]
+        noisy_base_angles = base_angles + noise_param * np.random.randn(steps, 1)
+        
+        # Calculate beta and alpha arrays
+        betas = -np.sin(noisy_base_angles).flatten()
+        alphas = -np.cos(noisy_base_angles).flatten()
+        
+        # Process momentum model multiple times and average
+        momentum_results_list = []
+        # Progress bar for momentum circuits
+        momentum_progress = tqdm(range(num_circuits), desc="Momentum circuits", leave=False)
+        for _ in momentum_progress:
+            results = tfim_momentum_trotter(ks, steps, noise_param, betas, alphas)
+            momentum_results_list.append(process_tfim_momentum_trotter(ks, steps, num_qubits, noise_param, betas, alphas))
+        
+        # Average the momentum results
+        momentum_mean = np.mean([r["mean_kinks"] for r in momentum_results_list])
+        momentum_var = np.mean([r["var_kinks"] for r in momentum_results_list])
+        momentum_means.append(momentum_mean)
+        momentum_vars.append(momentum_var)
+
+        # Process Qiskit model with these angles
+        qiskit_progress = tqdm(total=1, desc="Qiskit simulation", leave=False)
+        qiskit_results = process_qiskit_model(num_qubits, steps, noise_param,
+                                          'global', num_circuits, numshots, betas, alphas)
+        qiskit_progress.update(1)
+        qiskit_means.append(qiskit_results["mean_kinks"])
+        qiskit_vars.append(qiskit_results["var_kinks"])
+
+    # Create two subplots
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 12))
+    
+    # Plot mean kinks
+    ax1.plot(list(step_range), [i / num_qubits for i in momentum_means], 'o-',
+             label=f'Momentum (noise={noise_param})')
+    ax1.plot(list(step_range), [i / num_qubits for i in qiskit_means], 'x-',
+             label=f'Qiskit (noise={noise_param})')
+    ax1.set_xlabel('Number of Steps')
+    ax1.set_ylabel('Mean Kinks/N')
+    ax1.set_title(f'Mean Kinks vs Steps Comparison ({num_qubits} qubits)')
+    ax1.legend()
+    ax1.grid(True)
+    
+    # Plot variance
+    ax2.plot(list(step_range), [i / (num_qubits**2) for i in momentum_vars], 'o-',
+             label=f'Momentum (noise={noise_param})')
+    ax2.plot(list(step_range), [i / (num_qubits**2) for i in qiskit_vars], 'x-',
+             label=f'Qiskit (noise={noise_param})')
+    ax2.set_xlabel('Number of Steps')
+    ax2.set_ylabel('Variance/N²')
+    ax2.set_title(f'Variance vs Steps Comparison ({num_qubits} qubits)')
+    ax2.legend()
+    ax2.grid(True)
+    
+    plt.tight_layout()
+
+    # Construct filenames
+    date_str = datetime.date.today().strftime('%Y%m%d')
+    mean_filename = f"mean_kinks_N{num_qubits}_noise{noise_param}_circ{num_circuits}_shots{numshots}_{date_str}.png"
+    var_filename = f"variance_N{num_qubits}_noise{noise_param}_circ{num_circuits}_shots{numshots}_{date_str}.png"
+    
+    return fig, mean_filename, var_filename
+
+
+if __name__ == "__main__":
+    # Define base parameters
+    num_qubits=4
+    step_range=range(0, 31, 5)
+    numshots=10000  # Reduced number of shots
+    num_circuits=100  # Increased number of circuits
+    interactive=False  # Default to non-interactive mode
+    
+    # Define parameter combinations to plot
+    parameter_sets = [
+        {"noise_param": 0.05, "label": "noise005"},
+        {"noise_param": 0.1, "label": "noise01"},
+        {"noise_param": 0.2, "label": "noise02"}
+    ]
+    
+    # Generate plots for each parameter set
+    for params in parameter_sets:
+        print(f"\nGenerating plots for noise={params['noise_param']}")
+        
+        # Create and show the plot with noise comparison
+        fig, mean_filename, var_filename = plot_noise_effects_comparison(
+            num_qubits=num_qubits,
+            step_range=step_range,
+            noise_param=params['noise_param'],
+            num_circuits=num_circuits,
+            numshots=numshots,
+            interactive=interactive
+        )
+        
+        # Save the plots using the generated filenames
+        plt.savefig(mean_filename)
+        plt.savefig(var_filename)
+        print(f"Plots saved as: {mean_filename} and {var_filename}")
+        
+        # Close the figure to free memory
+        plt.close(fig)
+    
+    print("\nAll plots generated successfully!")
+
+
+def plot_momentum_qiskit_comparison(num_qubits=4, step_range=range(0, 31, 3),
+                                   noise_param=0.0, num_circuits=10, numshots=100000):
+    """
+    Plot comparison of mean kinks between Qiskit and momentum models for 4 qubits.
+    
+    Parameters:
+    -----------
+    num_qubits : int
+        Number of qubits (default: 4)
+    step_range : range
+        Range of steps to simulate
+    noise_param : float
+        Noise parameter for both models
+    num_circuits : int
+        Number of circuits for Qiskit simulation
+    numshots : int
+        Number of shots per circuit
+    """
+    ks = k_f(num_qubits)
+    
+    momentum_means = []
+    qiskit_means = []
+    
     for steps in step_range:
         # Process momentum model
-        momentum_results = process_tfim_momentum_trotter(ks, steps, num_qubits, momentum_noise)
+        momentum_results = process_tfim_momentum_trotter(ks, steps, num_qubits, noise_param)
         momentum_means.append(momentum_results["mean_kinks"])
-
+        
         # Process Qiskit model
-        qiskit_results = process_qiskit_model(num_qubits, steps, qiskit_noise_param,
-                                              qiskit_noise_type, num_circuits, numshots)
+        qiskit_results = process_qiskit_model(
+            num_qubits=num_qubits,
+            depth=steps,
+            noise_param=noise_param,
+            noise_type='global',
+            num_circuits=num_circuits,
+            numshots=numshots
+        )
         qiskit_means.append(qiskit_results["mean_kinks"])
-
+    
     # Plot the results
     plt.figure(figsize=(10, 6))
-    plt.plot(list(step_range), [i / num_qubits for i in momentum_means], 'o-',
-             label=f'Momentum (noise={momentum_noise})')
-    plt.plot(list(step_range), [i / num_qubits for i in qiskit_means], 'x-',
-             label=f'Qiskit ({qiskit_noise_type}, noise={qiskit_noise_param})')
-
+    plt.plot(list(step_range), [i/num_qubits for i in momentum_means], 'o-', 
+             label=f'Momentum (noise={noise_param})')
+    plt.plot(list(step_range), [i/num_qubits for i in qiskit_means], 'x-', 
+             label=f'Qiskit (noise={noise_param})')
+    
     plt.xlabel('Number of Steps')
     plt.ylabel('Mean Kinks/N')
     plt.title(f'Mean Kinks vs Steps Comparison ({num_qubits} qubits)')
     plt.legend()
     plt.grid(True)
-
-    return plt.gcf()
-
-
-def plot_rho_elements_vs_k(tau_values, k_range=np.linspace(0, np.pi, 100)):
-    """
-    Plot the [0,0] and [0,1] elements of the density matrix for different k values and tau values.
-
-    Parameters:
-    -----------
-    tau_values : list of int
-        List of step values to plot
-    k_range : array
-        Range of k values to evaluate
-    """
-    plt.figure(figsize=(12, 8))
-
-    # First subplot for rho[0,0]
-    plt.subplot(2, 1, 1)
-    for tau in tau_values:
-        rho_00_values = []
-        for k in k_range:
-            rho = tfim_momentum_trotter_single_k(k, tau, w=0.0)
-            rho_00_values.append(rho[0, 0].real)  # Real part of [0,0] element
-        plt.plot(k_range, rho_00_values, label=f'τ={tau}')
-
-    plt.xlabel('k')
-    plt.ylabel('ρ[0,0]')
-    plt.title('Diagonal Element ρ[0,0] vs Momentum k')
-    plt.grid(True)
-    plt.legend()
-
-    # Second subplot for rho[0,1]
-    plt.subplot(2, 1, 2)
-    for tau in tau_values:
-        rho_01_real_values = []
-        rho_01_imag_values = []
-        rho_01_abs_values = []
-
-        for k in k_range:
-            rho = tfim_momentum_trotter_single_k(k, tau, w=0.0)
-            rho_01_real_values.append(rho[0, 1].real)
-            rho_01_imag_values.append(rho[0, 1].imag)
-            rho_01_abs_values.append(abs(rho[0, 1]))
-
-        # Plot absolute value of off-diagonal element
-        plt.plot(k_range, rho_01_abs_values, label=f'|ρ[0,1]|, τ={tau}')
-
-        # Optionally, plot real and imaginary parts
-        # plt.plot(k_range, rho_01_real_values, '--', label=f'Re(ρ[0,1]), τ={tau}')
-        # plt.plot(k_range, rho_01_imag_values, ':', label=f'Im(ρ[0,1]), τ={tau}')
-
-    plt.xlabel('k')
-    plt.ylabel('ρ[0,1]')
-    plt.title('Off-Diagonal Element ρ[0,1] vs Momentum k')
-    plt.grid(True)
-    plt.legend()
-
-    plt.tight_layout()
-    return plt.gcf()
-
-
-def plot_kinks_vs_steps_for_sizes(system_sizes, step_range, numshots=10000, num_circuits=2):
-    """
-    Plot the mean number of kinks in Qiskit circuits with no noise as a function of steps
-    for multiple system sizes.
-
-    Parameters:
-    -----------
-    system_sizes : list of int
-        List of different qubit counts (system sizes) to simulate
-    step_range : list or range
-        Range of steps to simulate for each system size
-    numshots : int, optional
-        Number of shots for each circuit simulation (default: 100000)
-    num_circuits : int, optional
-        Number of circuits to average for each data point (default: 10)
-
-    Returns:
-    --------
-    fig : matplotlib Figure
-        The generated plot figure
-    """
-    plt.figure(figsize=(10, 6))
-
-    # Store data for scaling analysis
-    all_means = {}
-
-    for size in system_sizes:
-        # List to store mean kinks for this system size
-        means = []
-
-        for steps in step_range:
-            # Process Qiskit model with no noise
-            results = process_qiskit_model(
-                num_qubits=size,
-                depth=steps,
-                noise_param=0.0,  # No noise
-                noise_type='global',  # Doesn't matter with no noise
-                num_circuits=num_circuits,
-                numshots=numshots
-            )
-
-            mean_kinks = results["mean_kinks"]
-            means.append(mean_kinks)
-
-        # Store the data
-        all_means[size] = means
-
-        # Plot raw data
-        # plt.plot(list(step_range), means, 'o-', label=f'N = {size}')
-
-        # Plot scaled data (kinks/N)
-        plt.plot(list(step_range), [m / size for m in means], '--', alpha=0.7, label=f'N = {size} (scaled)')
-
-    plt.xlabel('Number of Steps')
-    plt.ylabel('Mean Kinks')
-    plt.title('Mean Kinks vs Steps for Different System Sizes (No Noise)')
-    plt.grid(True)
-    plt.legend()
-
-    # Add annotation explaining the plot
-    # plt.figtext(0.5, 0.01,
-    #             'Solid lines: absolute number of kinks\nDashed lines: kinks per qubit (kinks/N)',
-    #             ha='center', fontsize=10)
-
-    plt.tight_layout()
-    return plt.gcf()
-
-
-def plot_kinks_vs_steps_for_sizes_momentum(system_sizes, step_range, momentum_noise=0.0):
-    """
-    Plot the mean number of kinks in the discrete momentum model with no noise as a function of steps
-    for multiple system sizes.
-
-    Parameters:
-    -----------
-    system_sizes : list of int
-        List of different qubit counts (system sizes) to simulate
-    step_range : list or range
-        Range of steps to simulate for each system size
-    momentum_noise : float, optional
-        Noise parameter for the momentum model (default: 0.0)
-
-    Returns:
-    --------
-    fig : matplotlib Figure
-        The generated plot figure
-    """
-    plt.figure(figsize=(10, 6))
-
-    # Store data for scaling analysis
-    all_means = {}
-
-    for size in system_sizes:
-        # List to store mean kinks for this system size
-        means = []
-        ks = k_f(size)  # Get momentum values for this system size
-
-        for steps in step_range:
-            # Process momentum model
-            results = process_tfim_momentum_trotter(
-                ks=ks,
-                depth=steps,
-                num_qubits=size,
-                noise=momentum_noise  # No noise
-            )
-
-            mean_kinks = results["mean_kinks"]
-            means.append(mean_kinks)
-
-        # Store the data
-        all_means[size] = means
-
-        # Plot scaled data (kinks/N)
-        plt.plot(list(step_range), [m / size for m in means], 'o-', label=f'N = {size}')
-
-    plt.xlabel('Number of Steps')
-    plt.ylabel('Mean Kinks/N')
-    plt.title('Mean Kinks vs Steps for Different System Sizes (Momentum Model, No Noise)')
-    plt.grid(True)
-    plt.legend()
-
-    plt.tight_layout()
-    return plt.gcf()
-
-
-def plot_kinks_vs_steps_lz_evolution(system_sizes, step_range):
-    """
-    Plot the mean number of kinks using the noisy_lz_time_evolution model with no noise
-    as a function of steps for multiple system sizes.
-
-    Parameters:
-    -----------
-    system_sizes : list of int
-        List of different qubit counts (system sizes) to simulate
-    step_range : list or range
-        Range of steps to simulate for each system size
-
-    Returns:
-    --------
-    fig : matplotlib Figure
-        The generated plot figure
-    """
-    plt.figure(figsize=(10, 6))
-
-    # Store data for scaling analysis
-    all_means = {}
-
-    for size in system_sizes:
-        # List to store mean kinks for this system size
-        means = []
-        ks = k_f(size)  # Get momentum values for this system size
-
-        for steps in step_range:
-            # Get solutions from noisy_lz_time_evolution with no noise
-            ks_solutions = noisy_lz_time_evolution(ks, steps, 0.0)  # No noise
-
-            # Calculate probabilities for each k
-            pks = np.array([
-                np.abs(np.dot(
-                    np.array([np.sin(k / 2), np.cos(k / 2)]),
-                    np.dot(
-                        result.y[:, -1].reshape(2, 2),
-                        np.array([[np.sin(k / 2)], [np.cos(k / 2)]])
-                    )
-                ))[0]
-                for k, result in zip(ks, ks_solutions)
-            ])
-
-            # Clean up small values
-            pks = np.where(pks < epsilon / 100, 0, pks)
-
-            # Calculate kinks distribution and mean
-            kinks_vals = np.arange(0, size + 1, 2)
-            kinks_distribution = calc_kink_probabilities(pks, kinks_vals)
-            mean_kinks = np.sum(kinks_distribution * kinks_vals)
-
-            means.append(mean_kinks)
-
-        # Store the data
-        all_means[size] = means
-
-        # Plot scaled data (kinks/N)
-        plt.plot(list(step_range), [m / size for m in means], 'o-', label=f'N = {size}')
-
-    plt.xlabel('Number of Steps')
-    plt.ylabel('Mean Kinks/N')
-    plt.title('Mean Kinks vs Steps for Different System Sizes (LZ Time Evolution, No Noise)')
-    plt.grid(True)
-    plt.legend()
-
-    plt.tight_layout()
-    return plt.gcf()
-
-
-from matplotlib import pyplot as plt
-
-if __name__ == "__main__":
-    p = plot_mean_kinks_comparison(num_qubits=8, step_range=range(0, 31,5),
-                               momentum_noise=0.0,
-                               qiskit_noise_param=0.0, qiskit_noise_type='global',
-                               num_circuits=2, numshots=1000)
-    p.show()
-
-    # plot_pk_vs_k()
-
-    # Example usage
-    tau_values = [1, 20, 1000]
-    # fig = plot_rho_elements_vs_k(tau_values)
-    # plt.show()
-
-    # # Example usage:
-    # k_values = k_f(8)
-    #
-    # fig = plot_density_matrices_comparison(k_values, tau_values)
-    # plt.show()
-
-    # # Example usage:
-    # system_sizes = [4, 6, 8, 10]
-    # step_range = range(0, 31, 3)
-    # # fig = plot_kinks_vs_steps_for_sizes(system_sizes, step_range)
-    # # plt.show()
-    #
-    # # fig = plot_kinks_vs_steps_for_sizes_momentum(system_sizes, step_range)
-    # # plt.show()
-    #
-    # # Example usage:
-    # fig = plot_kinks_vs_steps_lz_evolution(system_sizes, step_range)
-    # plt.show()
-
-    # import numpy as np
-    # import matplotlib.pyplot as plt
-    #
-    # n = 100
-    # tau = 101
-    #
-    # # Parameters for n=1, tau=1
-    # theta_n = theta_n = (np.pi / 2) * n / (tau + 1)
-    # h = np.cos(theta_n)
-    # J = np.sin(theta_n)
-    #
-    # # Momentum values
-    # k_values = [np.pi/3, 2*np.pi/3]
-    # prob_down = []
-    #
-    # for k in k_values:
-    #     h_eff = 2 * (h - J * np.cos(k))
-    #     delta_k = 2 * J * np.sin(k)
-    #     A = h_eff / 2
-    #     B = delta_k / 2
-    #     H = np.array([[A, B], [B, -A]])
-    #     eigenvalues, eigenvectors = np.linalg.eigh(H)
-    #     idx = np.argmin(eigenvalues)  # Ground state
-    #     psi_g = eigenvectors[:, idx]
-    #
-    # # Plotting
-    # plt.plot(k_values, prob_down, label=r'$|\langle \downarrow | \psi_g \rangle|^2$')
-    # plt.xlabel('Momentum \( k \)')
-    # plt.ylabel('Probability in \( |downarrow\rangle \)')
-    # plt.title('Ground State Probability for Hamiltonian of Step 1')
-    # plt.grid(True)
-    # plt.legend()
-    # plt.show()
-    # for k in np.linspace(0, np.pi, 20):
-    #     rho = tfim_momentum_trotter_single_k(k, 100, 0, 1)
-    # rho, vs, hs = tfim_momentum_trotter_single_k(np.pi/8, 100, 0, 1)
-    # print(hs[-1])
-    # plt.plot(np.angle(np.array(vs)[:, 1]))
-    # plt.plot(np.angle(np.array(vs)[:, 0]))
-    # plt.show()
-    # plot_pk_vs_k(1)
-
+    
+    # Save the plot
+    plt.savefig('momentum_qiskit_comparison.png')
+    plt.close()
+    
+    return {
+        'steps': list(step_range),
+        'momentum_means': momentum_means,
+        'qiskit_means': qiskit_means
+    }
