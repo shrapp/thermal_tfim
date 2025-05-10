@@ -1,24 +1,24 @@
 import ast
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 import logging
+import time
+from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from enum import Enum
 from multiprocessing import Lock, Pool, Process
-import time
-from matplotlib import pyplot as plt
+
 import numpy as np
 import pandas as pd
 import scipy
+from joblib import Parallel, delayed
+from matplotlib import pyplot as plt
+from qiskit import QuantumCircuit, transpile
+from qiskit.quantum_info import DensityMatrix
+from qiskit_aer import AerSimulator
+from qiskit_aer.noise import NoiseModel
+from qiskit_aer.noise.errors import (amplitude_damping_error,
+                                     depolarizing_error, phase_damping_error)
 from scipy.integrate import quad, solve_ivp
 from scipy.special import gammaln, logsumexp
-import numpy as np
-from qiskit import QuantumCircuit, transpile
-from qiskit_aer.noise import NoiseModel
-from qiskit_aer import AerSimulator
-from collections import defaultdict
-from qiskit_aer.noise.errors import amplitude_damping_error, phase_damping_error, depolarizing_error
-from joblib import Parallel, delayed
-from qiskit.quantum_info import DensityMatrix
-
 
 logging.basicConfig(filename='logger.log', level=logging.INFO, format='%(asctime)s %(message)s')
 
@@ -256,9 +256,12 @@ def calculate_cumulants(probability_mass_function, values):
     cumulants = {'mean': mean, 'second_moment': second_moment, 'third_moment': third_moment, 'fourth_moment': fourth_moment, 'variance': variance, 'skewness': skewness, 'kurtosis': kurtosis}
     return cumulants
 
-def calc_kink_probabilities(pks, d_vals):
-    with Pool() as pool:
-        return np.array(pool.starmap(P_func, [(pks, d) for d in d_vals]))
+def calc_kink_probabilities(pks, d_vals, parallel=True):
+    if parallel:
+        with Pool() as pool:
+            return np.array(pool.starmap(P_func, [(pks, d) for d in d_vals]))
+    else:
+        return np.array([P_func(pks, d) for d in d_vals])
     
              
 def calc_data(Ns, taus, noises):
