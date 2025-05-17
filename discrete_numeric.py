@@ -11,6 +11,7 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import scipy.optimize  # Ensure optimize is available
 from qiskit import QuantumCircuit, transpile
 from qiskit.quantum_info import DensityMatrix
 from qiskit_aer import AerSimulator
@@ -535,13 +536,13 @@ def plot_noise_effects_comparison(num_qubits=4, step_range=range(0, 31, 3),
     
     # Save the plot
     handles, labels = ax1.get_legend_handles_labels()
-    legend = fig.legend(handles, labels, loc='lower center', ncol=len(configs), bbox_to_anchor=(0.5, -0.05))
+    legend = fig.legend(handles, labels, loc='lower center', ncol=len(handles), bbox_to_anchor=(0.5, -0.05))
     fig.subplots_adjust(bottom=0.25)  # Reserve enough space for the legend
     if plot_filename:
         plt.savefig(plot_filename, bbox_inches='tight', bbox_extra_artists=(legend,))
-        # Save as SVG
-        svg_filename = plot_filename.rsplit('.', 1)[0] + '.svg'
-        plt.savefig(svg_filename, format='svg', bbox_inches='tight', bbox_extra_artists=(legend,))
+    # Save as SVG
+    svg_filename = plot_filename.rsplit('.', 1)[0] + '.svg'
+    plt.savefig(svg_filename, format='svg', bbox_inches='tight', bbox_extra_artists=(legend,))
     plt.show()
     
     return fig, plot_filename
@@ -940,6 +941,61 @@ def aggregate_observables_and_save(all_density_matrices, ks, num_qubits, steps_l
     df_final.to_csv(csv_filename, index=False)
     return df_final
 
+def plot_momentum_means_vars_from_df_single(df, num_qubits, num_circuits, noise_param, filename=None):
+    # Global Settings for Matplotlib
+    plt.rcParams.update({
+        'text.usetex': True,              # Enable LaTeX rendering for text
+        'font.family': 'serif',           # Set font family
+        'font.size': 18,                  # General font size
+        'lines.markersize': 10,           # Default marker size
+        'legend.fontsize': 'small',       # Legend font size
+        'legend.frameon': False,          # Remove frame around legend
+        'figure.figsize': (6, 5),        # Larger figure size for legend
+        'axes.grid': True,                # Enable grid for axes
+        'grid.alpha': 0.1,                # Set grid transparency
+        'grid.linestyle': '--',           # Set grid line style
+        'grid.color': 'gray',             # Set grid line color
+        'axes.grid.which': 'both',        # Enable both major and minor gridlines
+        'axes.grid.axis': 'both',         # Apply grid to both x and y axes
+        'axes.labelsize': 22,             # Font size for axis labels
+        'xtick.labelsize': 13,            # Font size for x-axis tick labels
+        'ytick.labelsize': 13             # Font size for y-axis tick labels
+    })
+    fig, axs = plt.subplots(1, 2, figsize=(14, 6))
+    super_title = (r"\textbf{TFIM Momentum Model:} "
+                  + rf"$N$ (qubits) = {num_qubits}, "
+                  + rf"$M$ (circuits) = {num_circuits}, "
+                  + rf"$\sigma$ (noise variance) = {noise_param}")
+    plt.suptitle(super_title, y=0.94)
+    # Mean plot
+    ax = axs[0]
+    ax.plot(df['steps'], df['mean_exact'], 'o-', label='Exact (observable averaging)')
+    ax.plot(df['steps'], df['mean_independent_modes'], 's--', label='Independent Modes (rho averaging)')
+    ax.set_xlabel(r'\textbf{Steps}')
+    ax.set_ylabel(r'\textbf{Mean Kinks/N}')
+    # Add extra space at the top for the legend
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin, ymax * 1.1)
+    ax.legend(loc='upper left', bbox_to_anchor=(0.01, 0.99), borderaxespad=0.)
+    ax.grid(True)
+
+    # Variance plot
+    ax = axs[1]
+    ax.plot(df['steps'], df['var_exact'], 'o-', label='Exact (observable averaging)')
+    ax.plot(df['steps'], df['var_independent_modes'], 's--', label='Independent Modes (rho averaging)')
+    ax.set_xlabel(r'\textbf{Steps}')
+    ax.set_ylabel(r'\textbf{Variance/N}')
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin, ymax * 1.1)
+    ax.legend(loc='upper left', bbox_to_anchor=(0.01, 0.99), borderaxespad=0.)
+    ax.grid(True)
+
+    plt.subplots_adjust(left=0.15, right=0.95, wspace=0.25)
+    plt.tight_layout(rect=(0, 0, 1, 0.92))
+    if filename:
+        plt.savefig(filename, bbox_inches='tight')
+    plt.show()
+    
 def plot_multiple_configs(configs, data_dir='data', plot_filename=None):
     """
     Plot mean and variance for multiple configurations on the same graphs.
@@ -1049,41 +1105,38 @@ def run_single_plot(num_qubits=10, steps_list=range(0, 31, 5), num_circuits=20, 
         plot_filename (str or None): If provided, save the plot to this file
     """
     ks = k_f(num_qubits)
-    # Ensure data directory exists
     os.makedirs(data_dir, exist_ok=True)
     data_filename = os.path.join(data_dir, f"momentum_rhos_N{num_qubits}_noise{noise_param}_circ{num_circuits}.npz")
     csv_filename = os.path.join(data_dir, f"momentum_observables_N{num_qubits}_noise{noise_param}_circ{num_circuits}.csv")
     if plot_filename is None:
-        plot_filename = get_dated_plot_path(f"momentum_comparison_N{num_qubits}_noise{noise_param}_circ{num_circuits}.png")
-    # Aggregate and reuse density matrices as needed
+        plot_filename = get_dated_plot_path(f"momentum_comparison_N{num_qubits}_noise{noise_param}_circ{num_circuits}.svg")
     all_density_matrices, steps_list_used = aggregate_density_matrices_and_save(
         ks, steps_list, num_qubits, num_circuits, noise_param, data_filename
     )
-    # Aggregate and reuse observables as needed
     df = aggregate_observables_and_save(
         all_density_matrices, ks, num_qubits, steps_list, num_circuits, csv_filename
     )
-    # Plot the results
-    plot_momentum_means_vars_from_df(df, num_qubits, num_circuits, noise_param, configs, filename=plot_filename)
+    plot_momentum_means_vars_from_df_single(df, num_qubits, num_circuits, noise_param, plot_filename)
 
 
 # Main Execution
 # -------------
 if __name__ == "__main__":
     # Common parameters
-    noise_param = 0.5
-    steps_list = range(0, 101, 5)
-    num_circuits = 100
-    num_qubits = [10, 100, 1000]
-    configs = []
-    for num_qubit in num_qubits:
-        configs.append({
-            'num_qubits': num_qubit,
-            'steps_list': steps_list,
-            'noise_param': noise_param,
-            'num_circuits': num_circuits,
-            'label': f'N={num_qubit}, noise={noise_param}, M={num_circuits}'
-        })
+    # noise_param = 1
+    # steps_list = range(0, 101, 5)
+    # num_circuits = 100
+    # num_qubits = [10, 100, 1000]
+    # configs = []
+    # for num_qubit in num_qubits:
+    #     configs.append({
+    #         'num_qubits': num_qubit,
+    #         'steps_list': steps_list,
+    #         'noise_param': noise_param,
+    #         'num_circuits': num_circuits,
+    #         'label': f'N={num_qubit}, noise={noise_param}, M={num_circuits}'
+    #     })
     
-    plot_multiple_configs(configs, data_dir='data',
-                          plot_filename='Plots/20250510/multi_config_plot')
+    # plot_multiple_configs(configs, data_dir='data',
+    #                       plot_filename='Plots/20250510/multi_config_plot')
+    run_single_plot(num_qubits=1000, steps_list=range(0, 101, 5), num_circuits=1, noise_param=0, data_dir='data', plot_filename=None)
