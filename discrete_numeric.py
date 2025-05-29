@@ -1,10 +1,8 @@
 import datetime
-import itertools
 import logging
 import multiprocessing
 import os
 import random
-import sqlite3
 from functools import partial
 from multiprocessing import Pool
 from typing import Tuple, Dict, List, Optional
@@ -1006,7 +1004,7 @@ def get_data(
     os.makedirs(data_dir, exist_ok=True)
     rho_filename = os.path.join(data_dir, f'momentum_rhos_N{num_qubits}.npz')
     csv_filename = os.path.join(data_dir, f'momentum_observables_N{num_qubits}.csv')
-
+    noise_params_list = [round(n, 6) for n in noise_params_list]
     ks = k_f(num_qubits)
     density_data = get_density_matrices_data(
             ks, steps_list, num_circuits, noise_params_list, rho_filename
@@ -1039,6 +1037,7 @@ def get_observables_data(
 
     # prepare jobs for missing entries
     jobs = []
+    print(f"Checking for missing observables in {csv_filename}")
     for step in steps_list:
         for noise in noise_params_list:
             exists = (
@@ -1052,15 +1051,32 @@ def get_observables_data(
                     runs = random.sample(runs, num_circuits)
                 jobs.append((step, noise, runs, ks, num_qubits, num_circuits))
 
-    # compute in parallel
+    # compute missing observables in parallel with progress bar
     if jobs:
         with Pool() as pool:
-            new_records = pool.map(_compute_single_observable, jobs)
-        df = pd.concat([df, pd.DataFrame(new_records)], ignore_index=True)
-        df.sort_values(['noise_param', 'steps', 'num_circuits'], inplace=True)
-        df.to_csv(csv_filename, index=False)
+            new_records = list(tqdm(pool.imap(_compute_single_observable, jobs),
+                                    total=len(jobs),
+                                    desc="Computing missing observables"))
+        # Create new_df from new_records
+        new_df = pd.DataFrame(new_records)
 
-    return df
+        # Filter out all-NA columns and check if new_df is non-empty
+        new_df = new_df.dropna(axis=1, how='all')
+        if not new_df.empty:
+            df = pd.concat([df, new_df], ignore_index=True)
+            df.sort_values(['noise_param', 'steps', 'num_circuits'], inplace=True)
+            df.to_csv(csv_filename, index=False)
+        else:
+            print(f"Warning: new_df is empty or all-NA for new_records={new_records}, skipping concatenation")
+
+    # filter to requested entries
+    mask = (
+            df['steps'].isin(steps_list) &
+            df['noise_param'].isin(noise_params_list) &
+            (df['num_circuits'] == num_circuits)
+    )
+    return df.loc[mask].reset_index(drop=True)
+
 
 def _compute_single_observable(args):
     step, noise, runs, ks, num_qubits, num_circuits = args
@@ -1069,15 +1085,14 @@ def _compute_single_observable(args):
     # independent (rho averaging) method
     mean_i, var_i = process_step(runs, ks, num_qubits, method="rho")
     return {
-        'steps': step,
-        'noise_param': noise,
-        'num_circuits': num_circuits,
-        'mean_exact': mean_e,
-        'var_exact': var_e,
+        'steps'                 : step,
+        'noise_param'           : noise,
+        'num_circuits'          : num_circuits,
+        'mean_exact'            : mean_e,
+        'var_exact'             : var_e,
         'mean_independent_modes': mean_i,
-        'var_independent_modes': var_i
+        'var_independent_modes' : var_i
     }
-
 
 
 def get_density_matrices_data(
@@ -1096,6 +1111,7 @@ def get_density_matrices_data(
 
     # schedule missing
     jobs = []
+    print(f"Checking for missing circuits in {data_filename}")
     for step in steps_list:
         for noise in noise_params_list:
             key = (step, noise)
@@ -1105,9 +1121,10 @@ def get_density_matrices_data(
                 jobs.append((ks, step, missing, noise))
 
     # compute missing in parallel
+    print(f"Computing {len(jobs)} missing circuits in parallel")
     if jobs:
         with Pool() as pool:
-            for step, noise, new_runs in pool.map(compute_single_data_point, jobs):
+            for step, noise, new_runs in tqdm(pool.map(compute_single_data_point, jobs), total=len(jobs)):
                 all_data.setdefault((step, noise), []).extend(new_runs)
 
     # save full data back to file
@@ -1163,35 +1180,6 @@ def compute_single_data_point(
     return steps, noise_param, dms
 
 
-def run_single_plot(num_qubits: int, steps_list: List[int], num_circuits: int, noise_param: float,
-                    data_dir: str = 'data', plot_filename: Optional[str] = None) -> None:
-    """
-    Run and plot a single configuration of the momentum model.
-    Parameters:
-        num_qubits (int): Number of qubits
-        steps_list (iterable): List or range of steps
-        num_circuits (int): Number of circuits
-        noise_param (float): Noise parameter
-        data_dir (str): Directory for data files
-        plot_filename (str or None): If provided, save the plot to this file
-    """
-    ks = k_f(num_qubits)
-    os.makedirs(data_dir, exist_ok=True)
-    data_filename = os.path.join(data_dir, f"momentum_rhos_N{num_qubits}_noise{noise_param}_circ{num_circuits}.npz")
-    csv_filename = os.path.join(data_dir,
-                                f"momentum_observables_N{num_qubits}_noise{noise_param}_circ{num_circuits}.csv")
-    if plot_filename is None:
-        plot_filename = get_dated_plot_path(
-                f"momentum_comparison_N{num_qubits}_noise{noise_param}_circ{num_circuits}.svg")
-    all_density_matrices, steps_list_used = aggregate_density_matrices_and_save(
-            ks, steps_list, num_qubits, num_circuits, noise_param, data_filename
-    )
-    df = aggregate_observables_and_save(
-            all_density_matrices, ks, num_qubits, steps_list, num_circuits, csv_filename
-    )
-    plot_momentum_means_vars_from_df_single(df, num_qubits, num_circuits, noise_param, plot_filename)
-
-
 def plot_var_ratio(num_qubits, steps_list, num_circuits, noise_param, data_dir='data', plot_filename=None):
     """
     Run and plot a single configuration of the momentum model.
@@ -1243,295 +1231,8 @@ def plot_var_ratio(num_qubits, steps_list, num_circuits, noise_param, data_dir='
     plt.show()
 
 
-def compute_density_matrices(params: Tuple[int, float, int, int]) -> Tuple[
-    int, float, int, int, List[Tuple[int, int, npt.NDArray[np.complex128]]]]:
-    """
-    Compute num_circuits sets of 2x2 density matrices (one per k) for a TFIM simulation with noise.
-
-    Args:
-        params: Tuple of (num_qubits, noise_param, step, num_circuits).
-            - num_qubits: Number of qubits in the TFIM system.
-            - noise_param: Noise strength for angle perturbations.
-            - step: Evolution step (integer).
-            - num_circuits: Number of circuits to compute.
-
-    Returns:
-        Tuple of (num_qubits, noise_param, step, num_circuits, results), where results is a
-        list of (circuit_index, k_index, dm) pairs, each dm being a 2x2 complex density matrix.
-    """
-    num_qubits, noise_param, step, num_circuits = params
-
-    # Compute wavevectors (half the number of qubits)
-    ks = k_f(num_qubits)  # Shape: (num_qubits//2,)
-    num_ks = num_qubits // 2
-
-    # Validate ks
-    if len(ks) != num_ks:
-        raise ValueError(f"Expected {num_ks} wavevectors, got {len(ks)}")
-
-    # Store results as list of (circuit_index, k_index, dm)
-    results = []
-
-    # Handle step=0 (initial state)
-    if step == 0:
-        # Return maximally mixed state for each k and circuit
-        for circuit_index in range(num_circuits):
-            for k_index in range(num_ks):
-                dm = np.eye(2) / 2  # Maximally mixed state
-                results.append((circuit_index, k_index, dm))
-        print(f"Step=0: Generated {len(results)} matrices for N={num_qubits}, sigma={noise_param}")
-        return num_qubits, noise_param, step, num_circuits, results
-
-    # Generate angles and compute density matrices
-    for circuit_index in range(num_circuits):
-        # Base angles for Trotter steps
-        base_angles = (np.pi / 2) * np.arange(1, step + 1) / (step + 1)
-        base_angles = base_angles[:, np.newaxis]
-
-        # Add noise to angles
-        noisy_base_angles = base_angles + noise_param * np.random.randn(step, 1)
-        betas = -np.sin(noisy_base_angles).flatten()
-        alphas = -np.cos(noisy_base_angles).flatten()
-
-        dm_list = tfim_momentum_trotter(ks, step, 0, betas, alphas, parallel=False)
-
-        for k_index, dm in enumerate(dm_list):
-            results.append((circuit_index, k_index, dm))
-
-    print(f"Generated {len(results)} matrices for N={num_qubits}, sigma={noise_param}, step={step}")
-    return num_qubits, noise_param, step, num_circuits, results
-
-
-def compute_observables(
-        density_matrices: List[npt.NDArray[np.complex128]],
-        ks: npt.NDArray[np.float64],
-        num_qubits: int
-) -> Dict[str, float]:
-    """
-    Compute mean and variance of kink observables for TFIM using two methods.
-
-    Args:
-        density_matrices: List of arrays, each of shape (num_qubits//2, 2, 2) with complex density matrices.
-        ks: Array of wavevectors (length num_qubits//2).
-        num_qubits: Number of qubits in the TFIM system.
-
-    Returns:
-        Dictionary with keys 'mean_exact', 'variance_exact', 'mean_independent',
-        'variance_independent', containing normalized kink observables.
-    """
-    num_ks = num_qubits // 2
-
-    # Method 1: Exact (process each circuit individually)
-    means_runs, vars_runs = [], []
-    for solutions in density_matrices:
-        if len(solutions) != num_ks:
-            raise ValueError(f"Expected {num_ks} matrices per circuit, got {len(solutions)}")
-        # Calculate pks for each k using corresponding matrix
-        pks = np.array([
-            np.abs(np.dot(
-                    np.array([np.sin(k / 2), np.cos(k / 2)]),
-                    np.dot(solution, np.array([[np.sin(k / 2)], [np.cos(k / 2)]]))
-            ))[0] for k, solution in zip(ks, solutions)
-        ])
-        pks = np.where(pks < 1e-10, 0, pks)
-        kinks_vals = np.arange(0, num_qubits + 1, 2)
-        distribution = calc_kink_probabilities(pks, kinks_vals, parallel=False)
-        kinks_distribution = {k: v for k, v in zip(kinks_vals, distribution)}
-        mean_kinks = calc_kinks_mean(kinks_distribution)
-        second_moment = sum(k ** 2 * v for k, v in kinks_distribution.items())
-        var_kinks = second_moment - mean_kinks ** 2
-        means_runs.append(mean_kinks / num_qubits)
-        vars_runs.append(var_kinks / num_qubits)
-    mean_exact = np.mean(means_runs)
-    variance_exact = np.mean(vars_runs)
-
-    # Method 2: Independent (average density matrices first)
-    avg_solutions = np.mean(density_matrices, axis=0)  # Shape: (num_qubits//2, 2, 2)
-    pks = np.array([
-        np.abs(np.dot(
-                np.array([np.sin(k / 2), np.cos(k / 2)]),
-                np.dot(solution, np.array([[np.sin(k / 2)], [np.cos(k / 2)]]))
-        ))[0] for k, solution in zip(ks, avg_solutions)
-    ])
-    pks = np.where(pks < 1e-10, 0, pks)
-    kinks_vals = np.arange(0, num_qubits + 1, 2)
-    distribution = calc_kink_probabilities(pks, kinks_vals, parallel=False)
-    kinks_distribution = {k: v for k, v in zip(kinks_vals, distribution)}
-    mean_kinks = calc_kinks_mean(kinks_distribution)
-    second_moment = sum(k ** 2 * v for k, v in kinks_distribution.items())
-    var_kinks = second_moment - mean_kinks ** 2
-    mean_independent = mean_kinks / num_qubits
-    variance_independent = var_kinks / num_qubits
-
-    return {
-        "mean_exact"          : mean_exact,
-        "variance_exact"      : variance_exact,
-        "mean_independent"    : mean_independent,
-        "variance_independent": variance_independent
-    }
-
-
-def collect_experiment_data(
-        num_qubits_list: List[int],
-        noise_param_list: List[float],
-        steps_list: List[int],
-        num_circuits_list: List[int],
-        data_dir: str = "data",
-        db_path: str = "experiment.db"
-) -> pd.DataFrame:
-    """Collect experiment data, reusing or computing density matrices and observables."""
-    # Initialize data directory
-    os.makedirs(data_dir, exist_ok=True)
-
-    # Connect to SQLite database
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS density_matrices (
-            id INTEGER PRIMARY KEY,
-            num_qubits INTEGER NOT NULL,
-            noise_param REAL NOT NULL,
-            step INTEGER NOT NULL,
-            circuit_index INTEGER NOT NULL,
-            k_index INTEGER NOT NULL,
-            file_path TEXT NOT NULL UNIQUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(num_qubits, noise_param, step, circuit_index, k_index)
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS observables (
-            id INTEGER PRIMARY KEY,
-            num_qubits INTEGER NOT NULL,
-            noise_param REAL NOT NULL,
-            step INTEGER NOT NULL,
-            num_circuits INTEGER NOT NULL,
-            mean_exact REAL NOT NULL,
-            variance_exact REAL NOT NULL,
-            mean_independent REAL NOT NULL,
-            variance_independent REAL NOT NULL,
-            computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(num_qubits, noise_param, step, num_circuits),
-            FOREIGN KEY (num_qubits, noise_param, step)
-            REFERENCES density_matrices (num_qubits, noise_param, step)
-        )
-    """)
-    conn.commit()
-
-    # Check for cached observables
-    all_data = []
-    missing_combinations = []
-    for N, sigma, step, M in itertools.product(num_qubits_list, noise_param_list, steps_list, num_circuits_list):
-        cursor.execute("""
-            SELECT mean_exact, variance_exact, mean_independent, variance_independent
-            FROM observables
-            WHERE num_qubits=? AND noise_param=? AND step=? AND num_circuits=?
-        """, (N, sigma, step, M))
-        result = cursor.fetchone()
-        if result:
-            all_data.append({
-                "num_qubits"          : N,
-                "noise_param"         : sigma,
-                "step"                : step,
-                "num_circuits"        : M,
-                "mean_exact"          : result[0],
-                "variance_exact"      : result[1],
-                "mean_independent"    : result[2],
-                "variance_independent": result[3]
-            })
-        else:
-            missing_combinations.append((N, sigma, step, M))
-
-    # Determine density matrices needed
-    groups = {}
-    for N, sigma, step, M in missing_combinations:
-        key = (N, sigma, step)
-        groups[key] = max(groups.get(key, 0), M)
-
-    # Check existing density matrices
-    tasks = []
-    for (N, sigma, step), max_M in groups.items():
-        cursor.execute("""
-            SELECT circuit_index, k_index
-            FROM density_matrices
-            WHERE num_qubits=? AND noise_param=? AND step=?
-        """, (N, sigma, step))
-        existing = {(row[0], row[1]) for row in cursor.fetchall()}
-        expected = {(c, k) for c in range(max_M) for k in range(N // 2)}
-        missing = expected - existing
-        if missing:
-            print(f"Missing {len(missing)} matrices for N={N}, sigma={sigma}, step={step}")
-            tasks.append((N, sigma, step, max_M))
-
-    # Compute missing density matrices in parallel
-    if tasks:
-        with Pool(processes=10) as pool:
-            results = pool.map(compute_density_matrices, tasks)
-        for N, sigma, step, num_circuits, result_list in results:
-            sigma_str = f"{sigma:.4f}".replace(".", "_")
-            for circuit_index, k_index, dm in result_list:
-                file_name = f"rhos_N{N}_sigma{sigma_str}_step{step}_circuit{circuit_index}_k{k_index}.npy"
-                file_path = os.path.join(data_dir, file_name)
-                np.save(file_path, dm)
-                try:
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO density_matrices
-                        (num_qubits, noise_param, step, circuit_index, k_index, file_path)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, (N, sigma, step, circuit_index, k_index, file_path))
-                    print(f"Inserted N={N}, sigma={sigma}, step={step}, circuit={circuit_index}, k={k_index}")
-                except sqlite3.Error as e:
-                    print(
-                            f"Database error for N={N}, sigma={sigma}, step={step}, circuit={circuit_index}, k={k_index}: {e}")
-        conn.commit()
-
-    # Compute missing observables
-    for N, sigma, step, M in missing_combinations:
-        # Load density matrices
-        dms = []
-        for circuit_index in range(M):
-            circuit_dms = []
-            for k_index in range(N // 2):
-                cursor.execute("""
-                    SELECT file_path FROM density_matrices
-                    WHERE num_qubits=? AND noise_param=? AND step=? AND circuit_index=? AND k_index=?
-                """, (N, sigma, step, circuit_index, k_index))
-                result = cursor.fetchone()
-                if result:
-                    dm = np.load(result[0], allow_pickle=True)
-                    circuit_dms.append(dm)
-                else:
-                    print(f"Missing matrix: N={N}, sigma={sigma}, step={step}, circuit={circuit_index}, k={k_index}")
-                    raise ValueError(
-                            f"Missing density matrix for N={N}, sigma={sigma}, step={step}, circuit={circuit_index}, k={k_index}")
-            dms.append(circuit_dms)
-
-        # Compute observables
-        ks = k_f(N)  # Shape: (N//2,)
-        observables = compute_observables(dms, ks, N)
-        cursor.execute("""
-            INSERT INTO observables
-            (num_qubits, noise_param, step, num_circuits, mean_exact, variance_exact, mean_independent, variance_independent)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (N, sigma, step, M, observables["mean_exact"], observables["variance_exact"],
-              observables["mean_independent"], observables["variance_independent"]))
-        all_data.append({
-            "num_qubits"          : N,
-            "noise_param"         : sigma,
-            "step"                : step,
-            "num_circuits"        : M,
-            "mean_exact"          : observables["mean_exact"],
-            "variance_exact"      : observables["variance_exact"],
-            "mean_independent"    : observables["mean_independent"],
-            "variance_independent": observables["variance_independent"]
-        })
-    conn.commit()
-    conn.close()
-
-    return pd.DataFrame(all_data)
-
-def run_single_plot1(num_qubits: int, steps_list: List[int], num_circuits: int, noise_param: float,
-                    data_dir: str = 'data', plot_filename: Optional[str] = None) -> None:
+def run_single_plot(num_qubits: int, steps_list: List[int], num_circuits: int, noise_param: float,
+                    plot_filename: Optional[str] = None) -> None:
     """
     Run and plot a single configuration of the momentum model.
     Parameters:
@@ -1546,14 +1247,65 @@ def run_single_plot1(num_qubits: int, steps_list: List[int], num_circuits: int, 
         plot_filename = get_dated_plot_path(
                 f"momentum_comparison_N{num_qubits}_noise{noise_param}_circ{num_circuits}.svg")
     df = get_data(
-        num_qubits=num_qubits,
-        steps_list=steps_list,
-        num_circuits=num_circuits,
-        noise_params_list=[noise_param],
-        data_dir=data_dir
+            num_qubits=num_qubits,
+            steps_list=steps_list,
+            num_circuits=num_circuits,
+            noise_params_list=[noise_param],
     )
     plot_momentum_means_vars_from_df_single(df, num_qubits, num_circuits, noise_param, plot_filename)
 
+def plot_moments_ratio_to_noise(
+        num_qubits: int,
+        steps: int,
+        num_circuits: int,
+        noise_params_list: List[float],
+        plot_filename: Optional[str] = None
+) -> None:
+    if plot_filename is None:
+        plot_filename = get_dated_plot_path(
+            f"momentum_ratio_noise_N{num_qubits}_steps{steps}_circ{num_circuits}.svg"
+        )
+
+    # fetch observables for each noise level
+    df = get_data(
+        num_qubits=num_qubits,
+        steps_list=[steps],
+        num_circuits=num_circuits,
+        noise_params_list=noise_params_list
+    )
+
+    pyplot_settings()
+    fig, ax = plt.subplots(1, 1, figsize=(7, 6))
+
+    # compute ratios
+    df = df.sort_values('noise_param')
+    x = df['noise_param']
+    ratio_exact = df['var_exact'] / df['mean_exact']
+    ratio_rho   = df['var_independent_modes'] / df['mean_independent_modes']
+
+    # plot lines
+    ax.plot(x, ratio_exact,  'o-', label='Exact (observable)')
+    ax.plot(x, ratio_rho,    's--', label='Independent modes (rho avg)')
+
+    ax.set_xscale('log')
+    # ax.axhline(0.5, color='gray', linestyle='--', linewidth=1)
+    ax.axhline(1, color='gray', linestyle='--', linewidth=1)
+
+    ax.set_xlabel(r'\textbf{Noise Parameter}')
+    ax.set_ylabel(r'\textbf{Variance/Mean}')
+    ax.grid(True)
+    ax.legend(loc='best')
+
+    #add title
+    super_title = (rf"qubits = {num_qubits}, "
+                     rf"steps = {steps}, "
+                     rf"circuits = {num_circuits}")
+    plt.suptitle(super_title, y=0.94)
+
+
+    plt.tight_layout()
+    plt.savefig(plot_filename, bbox_inches='tight')
+    plt.show()
 
 
 
@@ -1581,4 +1333,6 @@ if __name__ == "__main__":
     #                plot_filename=None)
     # data = collect_experiment_data([8], [0.1], range(0, 11, 1), [10])
     # print(data)
-    run_single_plot(num_qubits=100, steps_list=range(0, 1001, 50), num_circuits=10, noise_param=0.02)
+    plot_moments_ratio_to_noise(num_qubits=8, steps=50, num_circuits=50, noise_params_list=np.logspace(-2.5, 1, 20).tolist())
+
+
