@@ -1,4 +1,5 @@
 import datetime
+import itertools
 import logging
 import multiprocessing
 import os
@@ -6,9 +7,8 @@ import random
 import sqlite3
 from functools import partial
 from multiprocessing import Pool
-from typing import Tuple, Dict, List
+from typing import Tuple, Dict, List, Optional
 
-import itertools
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
@@ -146,8 +146,8 @@ def process_tfim_momentum_trotter(ks, depth, num_qubits, W, betas=None, alphas=N
     # Calculate kink probabilities
     pks = np.array([
         np.abs(np.dot(
-            np.array([np.sin(k / 2), np.cos(k / 2)]),
-            np.dot(solution, np.array([[np.sin(k / 2)], [np.cos(k / 2)]]))
+                np.array([np.sin(k / 2), np.cos(k / 2)]),
+                np.dot(solution, np.array([[np.sin(k / 2)], [np.cos(k / 2)]]))
         ))[0] for k, solution in zip(ks, solutions)
     ])
     pks = np.where(pks < 1e-10, 0, pks)
@@ -163,13 +163,13 @@ def process_tfim_momentum_trotter(ks, depth, num_qubits, W, betas=None, alphas=N
     var_kinks = second_moment - mean_kinks ** 2
 
     return {
-        "solutions": solutions,
-        "pks": pks,
-        "density_matrix": density_matrix,
+        "solutions"         : solutions,
+        "pks"               : pks,
+        "density_matrix"    : density_matrix,
         "kinks_distribution": kinks_distribution,
-        "mean_kinks": mean_kinks,
-        "var_kinks": var_kinks,
-        "purity": purity
+        "mean_kinks"        : mean_kinks,
+        "var_kinks"         : var_kinks,
+        "purity"            : purity
     }
 
 
@@ -246,13 +246,13 @@ def generate_qiskit_circuits(qubits, steps, num_circuits_per_step, noise_std=0.0
 def run_qiskit_simulation(qubits, steps, noise_param, noise_type, num_circuits, numshots, betas=None, alphas=None):
     """Run Qiskit simulation and return results."""
     circuits, density_matrices = generate_qiskit_circuits(
-        qubits=qubits,
-        steps=steps,
-        num_circuits_per_step=num_circuits,
-        noise_std=noise_param,
-        noise_method=noise_type,
-        betas=betas,
-        alphas=alphas
+            qubits=qubits,
+            steps=steps,
+            num_circuits_per_step=num_circuits,
+            noise_std=noise_param,
+            noise_method=noise_type,
+            betas=betas,
+            alphas=alphas
     )
 
     simulator = AerSimulator()
@@ -263,7 +263,7 @@ def run_qiskit_simulation(qubits, steps, noise_param, noise_type, num_circuits, 
     results = []
     for i in range(len(circuits)):
         results.append({
-            'counts': job_result.get_counts(i),
+            'counts'        : job_result.get_counts(i),
             'density_matrix': density_matrices[i]
         })
 
@@ -287,14 +287,14 @@ def process_qiskit_model(num_qubits, depth, noise_param, noise_type, num_circuit
     try:
         # Run the simulation
         results = run_qiskit_simulation(
-            qubits=num_qubits,
-            steps=depth,
-            noise_param=noise_param,
-            noise_type=noise_type,
-            num_circuits=num_circuits,
-            numshots=numshots,
-            betas=betas,
-            alphas=alphas
+                qubits=num_qubits,
+                steps=depth,
+                noise_param=noise_param,
+                noise_type=noise_type,
+                num_circuits=num_circuits,
+                numshots=numshots,
+                betas=betas,
+                alphas=alphas
         )
 
         # Aggregate counts from all circuits
@@ -314,16 +314,16 @@ def process_qiskit_model(num_qubits, depth, noise_param, noise_type, num_circuit
         var_kinks = sum((k - mean_kinks) ** 2 * p for k, p in zip(kink_counts, probabilities.values()))
 
         return {
-            "mean_kinks": mean_kinks,
-            "var_kinks": var_kinks,
+            "mean_kinks"   : mean_kinks,
+            "var_kinks"    : var_kinks,
             "probabilities": probabilities
         }
 
     except Exception as e:
         print(f"Error in process_qiskit_model: {str(e)}")
         return {
-            "mean_kinks": 0.0,
-            "var_kinks": 0.0,
+            "mean_kinks"   : 0.0,
+            "var_kinks"    : 0.0,
             "probabilities": {}
         }
 
@@ -389,8 +389,8 @@ def plot_noise_effects_comparison(num_qubits=4, step_range=range(0, 31, 3),
             # Calculate pks from averaged density matrices
             avg_pks_method2 = np.array([
                 np.abs(np.dot(
-                    np.array([np.sin(k / 2), np.cos(k / 2)]),
-                    np.dot(solution, np.array([[np.sin(k / 2)], [np.cos(k / 2)]]))
+                        np.array([np.sin(k / 2), np.cos(k / 2)]),
+                        np.dot(solution, np.array([[np.sin(k / 2)], [np.cos(k / 2)]]))
                 ))[0] for k, solution in zip(ks, avg_solutions)
             ])
             avg_pks_method2 = np.where(avg_pks_method2 < 1e-10, 0, avg_pks_method2)
@@ -462,8 +462,8 @@ def plot_noise_effects_comparison(num_qubits=4, step_range=range(0, 31, 3),
             # Calculate pks from averaged density matrices
             avg_pks_method2 = np.array([
                 np.abs(np.dot(
-                    np.array([np.sin(k / 2), np.cos(k / 2)]),
-                    np.dot(solution, np.array([[np.sin(k / 2)], [np.cos(k / 2)]]))
+                        np.array([np.sin(k / 2), np.cos(k / 2)]),
+                        np.dot(solution, np.array([[np.sin(k / 2)], [np.cos(k / 2)]]))
                 ))[0] for k, solution in zip(ks, avg_solutions)
             ])
             avg_pks_method2 = np.where(avg_pks_method2 < 1e-10, 0, avg_pks_method2)
@@ -586,7 +586,7 @@ def compute_and_save_density_matrices_parallel_circuits(ks, steps_list, num_qubi
         with Pool(processes=10) as pool:
             # Pass ks, steps, noise_param for each circuit
             step_density_matrices = list(
-                pool.map(single_circuit_density_matrices, [(ks, steps, noise_param)] * num_circuits, chunksize=1))
+                    pool.map(single_circuit_density_matrices, [(ks, steps, noise_param)] * num_circuits, chunksize=1))
         all_density_matrices.append(step_density_matrices)
     print(f"Saving density matrices to {filename}")
     np.savez(filename, all_density_matrices=all_density_matrices, steps_list=np.array(list(steps_list)),
@@ -606,8 +606,8 @@ def process_step(step_density_matrices, ks, num_qubits, method):
             # Calculate pks for each k
             pks = np.array([
                 np.abs(np.dot(
-                    np.array([np.sin(k / 2), np.cos(k / 2)]),
-                    np.dot(solution, np.array([[np.sin(k / 2)], [np.cos(k / 2)]]))
+                        np.array([np.sin(k / 2), np.cos(k / 2)]),
+                        np.dot(solution, np.array([[np.sin(k / 2)], [np.cos(k / 2)]]))
                 ))[0] for k, solution in zip(ks, solutions)
             ])
             pks = np.where(pks < 1e-10, 0, pks)
@@ -628,8 +628,8 @@ def process_step(step_density_matrices, ks, num_qubits, method):
             avg_solutions.append(avg_rho)
         pks = np.array([
             np.abs(np.dot(
-                np.array([np.sin(k / 2), np.cos(k / 2)]),
-                np.dot(solution, np.array([[np.sin(k / 2)], [np.cos(k / 2)]]))
+                    np.array([np.sin(k / 2), np.cos(k / 2)]),
+                    np.dot(solution, np.array([[np.sin(k / 2)], [np.cos(k / 2)]]))
             ))[0] for k, solution in zip(ks, avg_solutions)
         ])
         pks = np.where(pks < 1e-10, 0, pks)
@@ -671,26 +671,24 @@ def mean_var_from_density_matrices(all_density_matrices, ks, num_qubits, method=
 
 
 def plot_momentum_means_vars(steps_list, means_obs, vars_obs, means_rho, vars_rho, num_qubits, filename=None):
-    import matplotlib.pyplot as plt
-
     # Global Settings for Matplotlib
     plt.rcParams.update({
-        'text.usetex': True,  # Enable LaTeX rendering for text
-        'font.family': 'serif',  # Set font family
-        'font.size': 18,  # General font size
+        'text.usetex'     : True,  # Enable LaTeX rendering for text
+        'font.family'     : 'serif',  # Set font family
+        'font.size'       : 18,  # General font size
         'lines.markersize': 10,  # Default marker size
-        'legend.fontsize': 'small',  # Legend font size
-        'legend.frameon': False,  # Remove frame around legend
-        'figure.figsize': (6, 5),  # Default figure size
-        'axes.grid': True,  # Enable grid for axes
-        'grid.alpha': 0.1,  # Set grid transparency
-        'grid.linestyle': '--',  # Set grid line style
-        'grid.color': 'gray',  # Set grid line color
-        'axes.grid.which': 'both',  # Enable both major and minor gridlines
-        'axes.grid.axis': 'both',  # Apply grid to both x and y axes
-        'axes.labelsize': 22,  # Font size for axis labels
-        'xtick.labelsize': 13,  # Font size for x-axis tick labels
-        'ytick.labelsize': 13  # Font size for y-axis tick labels
+        'legend.fontsize' : 'small',  # Legend font size
+        'legend.frameon'  : False,  # Remove frame around legend
+        'figure.figsize'  : (6, 5),  # Default figure size
+        'axes.grid'       : True,  # Enable grid for axes
+        'grid.alpha'      : 0.1,  # Set grid transparency
+        'grid.linestyle'  : '--',  # Set grid line style
+        'grid.color'      : 'gray',  # Set grid line color
+        'axes.grid.which' : 'both',  # Enable both major and minor gridlines
+        'axes.grid.axis'  : 'both',  # Apply grid to both x and y axes
+        'axes.labelsize'  : 22,  # Font size for axis labels
+        'xtick.labelsize' : 13,  # Font size for x-axis tick labels
+        'ytick.labelsize' : 13  # Font size for y-axis tick labels
     })
     plt.figure(figsize=(12, 5))
     plt.subplot(1, 2, 1)
@@ -720,27 +718,6 @@ def plot_momentum_means_vars(steps_list, means_obs, vars_obs, means_rho, vars_rh
     plt.show()
 
 
-def compute_observables_dataframe(all_density_matrices, ks, num_qubits, steps_list):
-    """
-    Compute mean and variance for both methods and return as a pandas DataFrame.
-    Columns: steps, mean_exact, var_exact, mean_independent_modes, var_independent_modes
-    """
-    means_exact, vars_exact = mean_var_from_density_matrices(
-        all_density_matrices, ks, num_qubits, method="observable"
-    )
-    means_indep, vars_indep = mean_var_from_density_matrices(
-        all_density_matrices, ks, num_qubits, method="rho"
-    )
-    df = pd.DataFrame({
-        'steps': list(steps_list),
-        'mean_exact': means_exact,
-        'var_exact': vars_exact,
-        'mean_independent_modes': means_indep,
-        'var_independent_modes': vars_indep
-    })
-    return df
-
-
 def get_dated_plot_path(filename):
     """
     Returns a path for the given filename inside Plots/YYYYMMDD, creating the directory if needed.
@@ -766,7 +743,8 @@ def compute_circuits_for_step(args):
     return steps, dms
 
 
-def aggregate_density_matrices_and_save(ks, steps_list, num_qubits, num_circuits, noise_param, filename):
+def aggregate_density_matrices_and_save(ks: npt.NDArray, steps_list: List[int], num_qubits: int, num_circuits: int,
+                                        noise_param: float, data_filename: str):
     """
     Aggregate and reuse density matrices for requested steps and num_circuits.
     - Loads existing data if present.
@@ -779,9 +757,9 @@ def aggregate_density_matrices_and_save(ks, steps_list, num_qubits, num_circuits
     - Returns (all_density_matrices, steps_list_used)
     """
     # Try to load existing data
-    if os.path.exists(filename):
-        print(f"Loading and aggregating density matrices from {filename}...")
-        data = np.load(filename, allow_pickle=True)
+    if os.path.exists(data_filename):
+        print(f"Loading and aggregating density matrices from {data_filename}...")
+        data = np.load(data_filename, allow_pickle=True)
         existing_steps = list(data['steps_list'])
         existing_density_matrices = list(data['all_density_matrices'])
         # Map step -> density_matrices for easy lookup
@@ -826,8 +804,8 @@ def aggregate_density_matrices_and_save(ks, steps_list, num_qubits, num_circuits
 
     # Save the aggregated data
     # Ensure steps and density matrices are sorted by the requested steps_list order
-    print(f"Saving aggregated density matrices to {filename}")
-    np.savez(filename, all_density_matrices=all_density_matrices, steps_list=np.array(list(steps_list)),
+    print(f"Saving aggregated density matrices to {data_filename}")
+    np.savez(data_filename, all_density_matrices=all_density_matrices, steps_list=np.array(list(steps_list)),
              num_qubits=num_qubits, noise_param=noise_param, num_circuits=num_circuits)
     return all_density_matrices, list(steps_list)
 
@@ -860,12 +838,12 @@ def aggregate_observables_and_save(all_density_matrices, ks, num_qubits, steps_l
     means_indep, vars_indep = mean_var_from_density_matrices(all_density_matrices, ks, num_qubits, method="rho",
                                                              parallel=True)
     df_new = pd.DataFrame({
-        'steps': list(steps_list),
-        'mean_exact': means_exact,
-        'var_exact': vars_exact,
+        'steps'                 : list(steps_list),
+        'mean_exact'            : means_exact,
+        'var_exact'             : vars_exact,
         'mean_independent_modes': means_indep,
-        'var_independent_modes': vars_indep,
-        'num_circuits': num_circuits
+        'var_independent_modes' : vars_indep,
+        'num_circuits'          : num_circuits
     })
     # Only reuse rows where both step and num_circuits match
     if not df_existing.empty:
@@ -935,22 +913,22 @@ def plot_multiple_configs(configs, data_dir='data', plot_filename=None):
 
     # Set matplotlib global settings for consistency
     plt.rcParams.update({
-        'text.usetex': True,
-        'font.family': 'serif',
-        'font.size': 18,
+        'text.usetex'     : True,
+        'font.family'     : 'serif',
+        'font.size'       : 18,
         'lines.markersize': 10,
-        'legend.fontsize': 'small',
-        'legend.frameon': False,
-        'figure.figsize': (6, 5),
-        'axes.grid': True,
-        'grid.alpha': 0.1,
-        'grid.linestyle': '--',
-        'grid.color': 'gray',
-        'axes.grid.which': 'both',
-        'axes.grid.axis': 'both',
-        'axes.labelsize': 22,
-        'xtick.labelsize': 13,
-        'ytick.labelsize': 13
+        'legend.fontsize' : 'small',
+        'legend.frameon'  : False,
+        'figure.figsize'  : (6, 5),
+        'axes.grid'       : True,
+        'grid.alpha'      : 0.1,
+        'grid.linestyle'  : '--',
+        'grid.color'      : 'gray',
+        'axes.grid.which' : 'both',
+        'axes.grid.axis'  : 'both',
+        'axes.labelsize'  : 22,
+        'xtick.labelsize' : 13,
+        'ytick.labelsize' : 13
     })
     fig, axs = plt.subplots(2, 2, figsize=(14, 16))
     colors = plt.get_cmap('viridis', len(configs))
@@ -973,10 +951,10 @@ def plot_multiple_configs(configs, data_dir='data', plot_filename=None):
                 all_density_matrices, steps_list_used = load_density_matrices(dm_filename)
             else:
                 all_density_matrices, steps_list_used = aggregate_density_matrices_and_save(
-                    ks, steps_list, num_qubits, num_circuits, noise_param, dm_filename
+                        ks, steps_list, num_qubits, num_circuits, noise_param, dm_filename
                 )
             df = aggregate_observables_and_save(
-                all_density_matrices, ks, num_qubits, steps_list, num_circuits, csv_filename
+                    all_density_matrices, ks, num_qubits, steps_list, num_circuits, csv_filename
             )
         else:
             df = pd.read_csv(csv_filename)
@@ -1018,8 +996,175 @@ def plot_multiple_configs(configs, data_dir='data', plot_filename=None):
     plt.show()
 
 
-def run_single_plot(num_qubits=10, steps_list=range(0, 31, 5), num_circuits=20, noise_param=0.5, data_dir='data',
-                    plot_filename=None):
+def get_data(
+        num_qubits: int,
+        steps_list: List[int],
+        num_circuits: int,
+        noise_params_list: List[float],
+        data_dir: str = 'data/new'
+) -> pd.DataFrame:
+    os.makedirs(data_dir, exist_ok=True)
+    rho_filename = os.path.join(data_dir, f'momentum_rhos_N{num_qubits}.npz')
+    csv_filename = os.path.join(data_dir, f'momentum_observables_N{num_qubits}.csv')
+
+    ks = k_f(num_qubits)
+    density_data = get_density_matrices_data(
+            ks, steps_list, num_circuits, noise_params_list, rho_filename
+    )
+    df = get_observables_data(
+            density_data, ks, num_qubits,
+            steps_list, noise_params_list,
+            num_circuits, csv_filename
+    )
+    return df
+
+
+def get_observables_data(
+        density_data: Dict[Tuple[int, float], List[List[npt.NDArray]]],
+        ks: npt.NDArray,
+        num_qubits: int,
+        steps_list: List[int],
+        noise_params_list: List[float],
+        num_circuits: int,
+        csv_filename: str
+) -> pd.DataFrame:
+    if os.path.exists(csv_filename):
+        df = pd.read_csv(csv_filename)
+    else:
+        df = pd.DataFrame(columns=[
+            'steps', 'noise_param', 'num_circuits',
+            'mean_exact', 'var_exact',
+            'mean_independent_modes', 'var_independent_modes'
+        ])
+
+    # prepare jobs for missing entries
+    jobs = []
+    for step in steps_list:
+        for noise in noise_params_list:
+            exists = (
+                    (df['steps'] == step) &
+                    (df['noise_param'] == noise) &
+                    (df['num_circuits'] == num_circuits)
+            ).any()
+            if not exists:
+                runs = density_data.get((step, noise), [])
+                if len(runs) > num_circuits:
+                    runs = random.sample(runs, num_circuits)
+                jobs.append((step, noise, runs, ks, num_qubits, num_circuits))
+
+    # compute in parallel
+    if jobs:
+        with Pool() as pool:
+            new_records = pool.map(_compute_single_observable, jobs)
+        df = pd.concat([df, pd.DataFrame(new_records)], ignore_index=True)
+        df.sort_values(['noise_param', 'steps', 'num_circuits'], inplace=True)
+        df.to_csv(csv_filename, index=False)
+
+    return df
+
+def _compute_single_observable(args):
+    step, noise, runs, ks, num_qubits, num_circuits = args
+    # exact (observable) method
+    mean_e, var_e = process_step(runs, ks, num_qubits, method="observable")
+    # independent (rho averaging) method
+    mean_i, var_i = process_step(runs, ks, num_qubits, method="rho")
+    return {
+        'steps': step,
+        'noise_param': noise,
+        'num_circuits': num_circuits,
+        'mean_exact': mean_e,
+        'var_exact': var_e,
+        'mean_independent_modes': mean_i,
+        'var_independent_modes': var_i
+    }
+
+
+
+def get_density_matrices_data(
+        ks: npt.NDArray,
+        steps_list: List[int],
+        num_circuits: int,
+        noise_params_list: List[float],
+        data_filename: str
+) -> Dict[Tuple[int, float], List[List[npt.NDArray]]]:
+    # load or initialize
+    if os.path.exists(data_filename):
+        data = np.load(data_filename, allow_pickle=True)
+        all_data = data['all_data'].item()
+    else:
+        all_data = {}
+
+    # schedule missing
+    jobs = []
+    for step in steps_list:
+        for noise in noise_params_list:
+            key = (step, noise)
+            existing = all_data.get(key, [])
+            missing = num_circuits - len(existing)
+            if missing > 0:
+                jobs.append((ks, step, missing, noise))
+
+    # compute missing in parallel
+    if jobs:
+        with Pool() as pool:
+            for step, noise, new_runs in pool.map(compute_single_data_point, jobs):
+                all_data.setdefault((step, noise), []).extend(new_runs)
+
+    # save full data back to file
+    os.makedirs(os.path.dirname(data_filename), exist_ok=True)
+    np.savez(
+            data_filename,
+            all_data=all_data,
+            steps_list=np.array(steps_list),
+            noise_params_list=np.array(noise_params_list),
+            num_circuits=num_circuits
+    )
+
+    # prepare return value: random sample of circuits if more than requested
+    return {
+        key: random.sample(runs, num_circuits) if len(runs) > num_circuits else runs
+        for key, runs in all_data.items()
+    }
+
+
+def compute_single_data_point(
+        args: Tuple[npt.NDArray[np.floating], int, int, float]
+) -> Tuple[int, float, List[List[npt.NDArray]]]:
+    """
+    Compute a batch of Trotterized density matrices for given momenta.
+
+    Parameters:
+      args: Tuple containing
+        ks (NDArray[np.floating]): Array of momentum values.
+        steps (int): Number of Trotter steps.
+        num_to_compute (int): Number of circuits to generate.
+        noise_param (float): Noise strength to apply on angles.
+
+    Returns:
+      Tuple containing:
+        steps (int): Number of Trotter steps.
+        noise_param (float): Noise strength used.
+        dms (List[List[npt.NDArray]]):
+          Outer list over runs (length == num_to_compute),
+          inner list over momentum modes (length == len(ks)),
+          each element is a 2×2 density matrix.
+    """
+    ks, steps, num_to_compute, noise_param = args
+    dms: List[List[npt.NDArray]] = []
+    for _ in range(num_to_compute):
+        base_angles = (np.pi / 2) * np.arange(1, steps + 1) / (steps + 1)
+        base_angles = base_angles[:, None]
+        noisy_base = base_angles + noise_param * np.random.randn(steps, 1)
+        betas = -np.sin(noisy_base).flatten()
+        alphas = -np.cos(noisy_base).flatten()
+
+        sol = tfim_momentum_trotter(ks, steps, 0, betas, alphas, parallel=False)
+        dms.append(sol)
+    return steps, noise_param, dms
+
+
+def run_single_plot(num_qubits: int, steps_list: List[int], num_circuits: int, noise_param: float,
+                    data_dir: str = 'data', plot_filename: Optional[str] = None) -> None:
     """
     Run and plot a single configuration of the momentum model.
     Parameters:
@@ -1037,12 +1182,12 @@ def run_single_plot(num_qubits=10, steps_list=range(0, 31, 5), num_circuits=20, 
                                 f"momentum_observables_N{num_qubits}_noise{noise_param}_circ{num_circuits}.csv")
     if plot_filename is None:
         plot_filename = get_dated_plot_path(
-            f"momentum_comparison_N{num_qubits}_noise{noise_param}_circ{num_circuits}.svg")
+                f"momentum_comparison_N{num_qubits}_noise{noise_param}_circ{num_circuits}.svg")
     all_density_matrices, steps_list_used = aggregate_density_matrices_and_save(
-        ks, steps_list, num_qubits, num_circuits, noise_param, data_filename
+            ks, steps_list, num_qubits, num_circuits, noise_param, data_filename
     )
     df = aggregate_observables_and_save(
-        all_density_matrices, ks, num_qubits, steps_list, num_circuits, csv_filename
+            all_density_matrices, ks, num_qubits, steps_list, num_circuits, csv_filename
     )
     plot_momentum_means_vars_from_df_single(df, num_qubits, num_circuits, noise_param, plot_filename)
 
@@ -1065,12 +1210,12 @@ def plot_var_ratio(num_qubits, steps_list, num_circuits, noise_param, data_dir='
                                 f"momentum_observables_N{num_qubits}_noise{noise_param}_circ{num_circuits}.csv")
     if plot_filename is None:
         plot_filename = get_dated_plot_path(
-            f"momentum_comparison_N{num_qubits}_noise{noise_param}_circ{num_circuits}.svg")
+                f"momentum_comparison_N{num_qubits}_noise{noise_param}_circ{num_circuits}.svg")
     all_density_matrices, steps_list_used = aggregate_density_matrices_and_save(
-        ks, steps_list, num_qubits, num_circuits, noise_param, data_filename
+            ks, steps_list, num_qubits, num_circuits, noise_param, data_filename
     )
     df = aggregate_observables_and_save(
-        all_density_matrices, ks, num_qubits, steps_list, num_circuits, csv_filename
+            all_density_matrices, ks, num_qubits, steps_list, num_circuits, csv_filename
     )
     pyplot_settings()
     fig, ax = plt.subplots(1, 1, figsize=(7, 6))
@@ -1079,12 +1224,12 @@ def plot_var_ratio(num_qubits, steps_list, num_circuits, noise_param, data_dir='
                    + rf"circuits={num_circuits}, "
                    + rf"noise var={noise_param}")
     plt.suptitle(super_title, y=0.94)
-    ye = df['var_exact'] / (df['mean_exact'])# * (1 - df['mean_exact']))
+    ye = df['var_exact'] / (df['mean_exact'])  # * (1 - df['mean_exact']))
     ax.plot(df['steps'], ye, 'o-', label='Exact (observable averaging)')
-    yi = df['var_independent_modes'] / (df['mean_independent_modes'] )#* (1 - df['mean_independent_modes']))
+    yi = df['var_independent_modes'] / (df['mean_independent_modes'])  # * (1 - df['mean_independent_modes']))
     ax.plot(df['steps'], yi, 's--', label='Independent Modes (rho averaging)')
     ax.set_xlabel(r'\textbf{Steps}')
-    ax.set_ylabel(r'\textbf{Variance/Mean Kinks}')#(1 - Mean Kinks)}')
+    ax.set_ylabel(r'\textbf{Variance/Mean Kinks}')  # (1 - Mean Kinks)}')
     # Add extra space at the top for the legend
     ymin, ymax = ax.get_ylim()
     ax.set_ylim(ymin, ymax * 1.1)
@@ -1184,8 +1329,8 @@ def compute_observables(
         # Calculate pks for each k using corresponding matrix
         pks = np.array([
             np.abs(np.dot(
-                np.array([np.sin(k / 2), np.cos(k / 2)]),
-                np.dot(solution, np.array([[np.sin(k / 2)], [np.cos(k / 2)]]))
+                    np.array([np.sin(k / 2), np.cos(k / 2)]),
+                    np.dot(solution, np.array([[np.sin(k / 2)], [np.cos(k / 2)]]))
             ))[0] for k, solution in zip(ks, solutions)
         ])
         pks = np.where(pks < 1e-10, 0, pks)
@@ -1204,8 +1349,8 @@ def compute_observables(
     avg_solutions = np.mean(density_matrices, axis=0)  # Shape: (num_qubits//2, 2, 2)
     pks = np.array([
         np.abs(np.dot(
-            np.array([np.sin(k / 2), np.cos(k / 2)]),
-            np.dot(solution, np.array([[np.sin(k / 2)], [np.cos(k / 2)]]))
+                np.array([np.sin(k / 2), np.cos(k / 2)]),
+                np.dot(solution, np.array([[np.sin(k / 2)], [np.cos(k / 2)]]))
         ))[0] for k, solution in zip(ks, avg_solutions)
     ])
     pks = np.where(pks < 1e-10, 0, pks)
@@ -1219,9 +1364,9 @@ def compute_observables(
     variance_independent = var_kinks / num_qubits
 
     return {
-        "mean_exact": mean_exact,
-        "variance_exact": variance_exact,
-        "mean_independent": mean_independent,
+        "mean_exact"          : mean_exact,
+        "variance_exact"      : variance_exact,
+        "mean_independent"    : mean_independent,
         "variance_independent": variance_independent
     }
 
@@ -1285,13 +1430,13 @@ def collect_experiment_data(
         result = cursor.fetchone()
         if result:
             all_data.append({
-                "num_qubits": N,
-                "noise_param": sigma,
-                "step": step,
-                "num_circuits": M,
-                "mean_exact": result[0],
-                "variance_exact": result[1],
-                "mean_independent": result[2],
+                "num_qubits"          : N,
+                "noise_param"         : sigma,
+                "step"                : step,
+                "num_circuits"        : M,
+                "mean_exact"          : result[0],
+                "variance_exact"      : result[1],
+                "mean_independent"    : result[2],
                 "variance_independent": result[3]
             })
         else:
@@ -1337,7 +1482,7 @@ def collect_experiment_data(
                     print(f"Inserted N={N}, sigma={sigma}, step={step}, circuit={circuit_index}, k={k_index}")
                 except sqlite3.Error as e:
                     print(
-                        f"Database error for N={N}, sigma={sigma}, step={step}, circuit={circuit_index}, k={k_index}: {e}")
+                            f"Database error for N={N}, sigma={sigma}, step={step}, circuit={circuit_index}, k={k_index}: {e}")
         conn.commit()
 
     # Compute missing observables
@@ -1358,7 +1503,7 @@ def collect_experiment_data(
                 else:
                     print(f"Missing matrix: N={N}, sigma={sigma}, step={step}, circuit={circuit_index}, k={k_index}")
                     raise ValueError(
-                        f"Missing density matrix for N={N}, sigma={sigma}, step={step}, circuit={circuit_index}, k={k_index}")
+                            f"Missing density matrix for N={N}, sigma={sigma}, step={step}, circuit={circuit_index}, k={k_index}")
             dms.append(circuit_dms)
 
         # Compute observables
@@ -1371,19 +1516,45 @@ def collect_experiment_data(
         """, (N, sigma, step, M, observables["mean_exact"], observables["variance_exact"],
               observables["mean_independent"], observables["variance_independent"]))
         all_data.append({
-            "num_qubits": N,
-            "noise_param": sigma,
-            "step": step,
-            "num_circuits": M,
-            "mean_exact": observables["mean_exact"],
-            "variance_exact": observables["variance_exact"],
-            "mean_independent": observables["mean_independent"],
+            "num_qubits"          : N,
+            "noise_param"         : sigma,
+            "step"                : step,
+            "num_circuits"        : M,
+            "mean_exact"          : observables["mean_exact"],
+            "variance_exact"      : observables["variance_exact"],
+            "mean_independent"    : observables["mean_independent"],
             "variance_independent": observables["variance_independent"]
         })
     conn.commit()
     conn.close()
 
     return pd.DataFrame(all_data)
+
+def run_single_plot1(num_qubits: int, steps_list: List[int], num_circuits: int, noise_param: float,
+                    data_dir: str = 'data', plot_filename: Optional[str] = None) -> None:
+    """
+    Run and plot a single configuration of the momentum model.
+    Parameters:
+        num_qubits (int): Number of qubits
+        steps_list (iterable): List or range of steps
+        num_circuits (int): Number of circuits
+        noise_param (float): Noise parameter
+        data_dir (str): Directory for data files
+        plot_filename (str or None): If provided, save the plot to this file
+    """
+    if plot_filename is None:
+        plot_filename = get_dated_plot_path(
+                f"momentum_comparison_N{num_qubits}_noise{noise_param}_circ{num_circuits}.svg")
+    df = get_data(
+        num_qubits=num_qubits,
+        steps_list=steps_list,
+        num_circuits=num_circuits,
+        noise_params_list=[noise_param],
+        data_dir=data_dir
+    )
+    plot_momentum_means_vars_from_df_single(df, num_qubits, num_circuits, noise_param, plot_filename)
+
+
 
 
 # Main Execution

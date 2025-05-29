@@ -160,7 +160,7 @@ def calk_noisy_pk(ks, tau, w):
     # remove valuse that are too small
     return np.where(pks < epsilon/100, 0, pks)
 
-def k_f(N):
+def k_f(N: int) -> np.ndarray:
     # Filtering out even numbers
     odd_numbers = np.arange(1, N, 2)
     
