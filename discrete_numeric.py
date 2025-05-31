@@ -1288,7 +1288,7 @@ def plot_moments_ratio_to_noise(
     ax.plot(x, ratio_rho,    's--', label='Independent modes (rho avg)')
 
     ax.set_xscale('log')
-    # ax.axhline(0.5, color='gray', linestyle='--', linewidth=1)
+    ax.axhline(2/3, color='gray', linestyle='--', linewidth=1)
     ax.axhline(1, color='gray', linestyle='--', linewidth=1)
 
     ax.set_xlabel(r'\textbf{Noise Parameter}')
@@ -1307,6 +1307,58 @@ def plot_moments_ratio_to_noise(
     plt.savefig(plot_filename, bbox_inches='tight')
     plt.show()
 
+def plot_purity(
+        num_qubits: int,
+        steps: int,
+        num_circuits: int,
+        noise_params_list: List[float],
+        plot_filename: Optional[str] = None
+) -> None:
+    if plot_filename is None:
+        plot_filename = get_dated_plot_path(
+            f"momentum_ratio_noise_N{num_qubits}_steps{steps}_circ{num_circuits}.svg"
+        )
+
+    # fetch observables for each noise level
+    df = get_data(
+        num_qubits=num_qubits,
+        steps_list=[steps],
+        num_circuits=num_circuits,
+        noise_params_list=noise_params_list
+    )
+
+    pyplot_settings()
+    fig, ax = plt.subplots(1, 1, figsize=(7, 6))
+
+    # compute ratios
+    df = df.sort_values('noise_param')
+    x = df['noise_param']
+    ratio_exact = df['var_exact'] / df['mean_exact']
+    ratio_rho   = df['var_independent_modes'] / df['mean_independent_modes']
+
+    # plot lines
+    ax.plot(x, ratio_exact,  'o-', label='Exact (observable)')
+    ax.plot(x, ratio_rho,    's--', label='Independent modes (rho avg)')
+
+    ax.set_xscale('log')
+    # ax.axhline(0.5, color='gray', linestyle='--', linewidth=1)
+    ax.axhline(1, color='gray', linestyle='--', linewidth=1)
+
+    ax.set_xlabel(r'\textbf{Noise Parameter}')
+    ax.set_ylabel(r'\textbf{Variance/Mean}')
+    ax.grid(True)
+    ax.legend(loc='best')
+
+    #add title
+    super_title = (rf"qubits = {num_qubits}, "
+                     rf"steps = {steps}, "
+                     rf"circuits = {num_circuits}")
+    plt.suptitle(super_title, y=0.94)
+
+
+    plt.tight_layout()
+    plt.savefig(plot_filename, bbox_inches='tight')
+    plt.show()
 
 
 # Main Execution
@@ -1333,6 +1385,7 @@ if __name__ == "__main__":
     #                plot_filename=None)
     # data = collect_experiment_data([8], [0.1], range(0, 11, 1), [10])
     # print(data)
-    plot_moments_ratio_to_noise(num_qubits=8, steps=50, num_circuits=50, noise_params_list=np.logspace(-2.5, 1, 20).tolist())
+    # plot_moments_ratio_to_noise(num_qubits=20, steps=250, num_circuits=50, noise_params_list=np.logspace(-2.5, 1, 20).tolist())
+    run_single_plot(num_qubits=20, steps_list=[250], num_circuits=50, noise_param=10)
 
 
