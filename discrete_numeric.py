@@ -193,20 +193,21 @@ def generate_single_circuit_parallel(params):
             j = (i + 1) % qubits
             circuit.rzz(beta, i, j)
 
-        # Apply dephasing noise as RZ gates if needed
-        if noise_method == 'dephasing':
-            circuit.rz(noisy_betas[step, circuit_idx], range(qubits))
-
         # Apply RX gates for transverse field
         for i in range(qubits):
             circuit.rx(alpha, i)
+
+        # Apply dephasing noise as RZ gates if needed
+        if noise_method == 'dephasing':
+            circuit.rz(noisy_betas[step, circuit_idx], range(qubits))
 
     dm = DensityMatrix.from_instruction(circuit)
     circuit.measure(range(qubits), range(qubits))
     return circuit, dm.data
 
 
-def generate_qiskit_circuits(qubits, steps, num_circuits_per_step, noise_std=0.0, noise_method='global', betas=None,
+def generate_qiskit_circuits(qubits: int, steps: int, num_circuits_per_step: int, noise_std: float = 0.0,
+                             noise_method: str = 'global', betas=None,
                              alphas=None):
     """Generate multiple Qiskit circuits in parallel."""
     if betas is None or alphas is None:
@@ -241,7 +242,8 @@ def generate_qiskit_circuits(qubits, steps, num_circuits_per_step, noise_std=0.0
     return list(circuits), list(density_matrices)
 
 
-def run_qiskit_simulation(qubits, steps, noise_param, noise_type, num_circuits, numshots, betas=None, alphas=None):
+def run_qiskit_simulation(qubits: int, steps: int, noise_param: float, noise_type: str, num_circuits: int,
+                          numshots: int, betas=None, alphas=None):
     """Run Qiskit simulation and return results."""
     circuits, density_matrices = generate_qiskit_circuits(
             qubits=qubits,
@@ -280,7 +282,8 @@ def count_kinks(bitstring: str) -> int:
     return count
 
 
-def process_qiskit_model(num_qubits, depth, noise_param, noise_type, num_circuits, numshots, betas=None, alphas=None):
+def process_qiskit_model(num_qubits: int, depth: int, noise_param: float, noise_type: str, num_circuits: int,
+                         numshots: int, betas=None, alphas=None):
     """Process Qiskit simulation results and calculate statistics."""
     try:
         # Run the simulation
@@ -312,9 +315,10 @@ def process_qiskit_model(num_qubits, depth, noise_param, noise_type, num_circuit
         var_kinks = sum((k - mean_kinks) ** 2 * p for k, p in zip(kink_counts, probabilities.values()))
 
         return {
-            "mean_kinks"   : mean_kinks,
-            "var_kinks"    : var_kinks,
-            "probabilities": probabilities
+            "mean_kinks"      : mean_kinks,
+            "var_kinks"       : var_kinks,
+            "probabilities"   : probabilities,
+            "density_matrices": [result['density_matrix'] for result in results]
         }
 
     except Exception as e:
@@ -1254,6 +1258,7 @@ def run_single_plot(num_qubits: int, steps_list: List[int], num_circuits: int, n
     )
     plot_momentum_means_vars_from_df_single(df, num_qubits, num_circuits, noise_param, plot_filename)
 
+
 def plot_moments_ratio_to_noise(
         num_qubits: int,
         steps: int,
@@ -1263,15 +1268,15 @@ def plot_moments_ratio_to_noise(
 ) -> None:
     if plot_filename is None:
         plot_filename = get_dated_plot_path(
-            f"momentum_ratio_noise_N{num_qubits}_steps{steps}_circ{num_circuits}.svg"
+                f"momentum_ratio_noise_N{num_qubits}_steps{steps}_circ{num_circuits}.svg"
         )
 
     # fetch observables for each noise level
     df = get_data(
-        num_qubits=num_qubits,
-        steps_list=[steps],
-        num_circuits=num_circuits,
-        noise_params_list=noise_params_list
+            num_qubits=num_qubits,
+            steps_list=[steps],
+            num_circuits=num_circuits,
+            noise_params_list=noise_params_list
     )
 
     pyplot_settings()
@@ -1281,14 +1286,14 @@ def plot_moments_ratio_to_noise(
     df = df.sort_values('noise_param')
     x = df['noise_param']
     ratio_exact = df['var_exact'] / df['mean_exact']
-    ratio_rho   = df['var_independent_modes'] / df['mean_independent_modes']
+    ratio_rho = df['var_independent_modes'] / df['mean_independent_modes']
 
     # plot lines
-    ax.plot(x, ratio_exact,  'o-', label='Exact (observable)')
-    ax.plot(x, ratio_rho,    's--', label='Independent modes (rho avg)')
+    ax.plot(x, ratio_exact, 'o-', label='Exact (observable)')
+    ax.plot(x, ratio_rho, 's--', label='Independent modes (rho avg)')
 
     ax.set_xscale('log')
-    ax.axhline(2/3, color='gray', linestyle='--', linewidth=1)
+    ax.axhline(2 / 3, color='gray', linestyle='--', linewidth=1)
     ax.axhline(1, color='gray', linestyle='--', linewidth=1)
 
     ax.set_xlabel(r'\textbf{Noise Parameter}')
@@ -1296,68 +1301,71 @@ def plot_moments_ratio_to_noise(
     ax.grid(True)
     ax.legend(loc='best')
 
-    #add title
+    # add title
     super_title = (rf"qubits = {num_qubits}, "
-                     rf"steps = {steps}, "
-                     rf"circuits = {num_circuits}")
+                   rf"steps = {steps}, "
+                   rf"circuits = {num_circuits}")
     plt.suptitle(super_title, y=0.94)
-
 
     plt.tight_layout()
     plt.savefig(plot_filename, bbox_inches='tight')
     plt.show()
 
-def plot_purity(
+
+def plot_qiskit_ratio_and_purity(
         num_qubits: int,
         steps: int,
         num_circuits: int,
         noise_params_list: List[float],
+        num_shots: int = 100,
         plot_filename: Optional[str] = None
 ) -> None:
     if plot_filename is None:
         plot_filename = get_dated_plot_path(
-            f"momentum_ratio_noise_N{num_qubits}_steps{steps}_circ{num_circuits}.svg"
+                f"qiskit_ratio_and_purity_noise_N{num_qubits}_steps{steps}_circ{num_circuits}.svg"
         )
-
-    # fetch observables for each noise level
-    df = get_data(
-        num_qubits=num_qubits,
-        steps_list=[steps],
-        num_circuits=num_circuits,
-        noise_params_list=noise_params_list
-    )
-
+    ratios = []
+    purities = []
+    for noise_par in noise_params_list:
+        qiskit_results = process_qiskit_model(num_qubits=num_qubits, depth=steps, noise_param=noise_par,
+                                              noise_type='dephasing', num_circuits=num_circuits, numshots=num_shots)
+        mean = qiskit_results['mean_kinks'] / num_qubits
+        var = qiskit_results['var_kinks'] / num_qubits
+        ratios.append(var / mean)
+        purity = 0
+        density_matrix = sum(qiskit_results['density_matrices']) / len(qiskit_results['density_matrices'])
+        rho2 = density_matrix @ density_matrix
+        purity = np.trace(rho2).real
+        purities.append(purity)
+    # plot 2 graphs, one for ratio and one for purity both as a function of noise parameter in log scale:
     pyplot_settings()
-    fig, ax = plt.subplots(1, 1, figsize=(7, 6))
-
-    # compute ratios
-    df = df.sort_values('noise_param')
-    x = df['noise_param']
-    ratio_exact = df['var_exact'] / df['mean_exact']
-    ratio_rho   = df['var_independent_modes'] / df['mean_independent_modes']
-
-    # plot lines
-    ax.plot(x, ratio_exact,  'o-', label='Exact (observable)')
-    ax.plot(x, ratio_rho,    's--', label='Independent modes (rho avg)')
-
-    ax.set_xscale('log')
-    # ax.axhline(0.5, color='gray', linestyle='--', linewidth=1)
-    ax.axhline(1, color='gray', linestyle='--', linewidth=1)
-
-    ax.set_xlabel(r'\textbf{Noise Parameter}')
-    ax.set_ylabel(r'\textbf{Variance/Mean}')
-    ax.grid(True)
-    ax.legend(loc='best')
-
-    #add title
-    super_title = (rf"qubits = {num_qubits}, "
-                     rf"steps = {steps}, "
-                     rf"circuits = {num_circuits}")
+    fig, axs = plt.subplots(1, 2, figsize=(14, 6))
+    axs[0].plot(noise_params_list, ratios, 'o-', label='Ratio (var/mean)')
+    axs[0].set_xscale('log')
+    axs[0].set_xlabel(r'\textbf{Noise Parameter}')
+    axs[0].set_ylabel(r'\textbf{Variance/Mean Kinks}')
+    axs[0].grid(True)
+    axs[0].axhline(2 / 3, color='gray', linestyle='--', linewidth=1)
+    axs[0].axhline(1, color='gray', linestyle='--', linewidth=1)
+    axs[0].set_title(r'\textbf{Variance/Mean Kinks vs Noise Parameter}')
+    axs[0].legend(loc='best')
+    axs[1].plot(noise_params_list, purities, 's--', label='Purity')
+    axs[1].set_xscale('log')
+    axs[1].set_yscale('log', base=2)
+    axs[1].set_xlabel(r'\textbf{Noise Parameter}')
+    axs[1].set_ylabel(r'\textbf{Purity}')
+    axs[1].grid(True)
+    axs[1].set_title(r'\textbf{Purity vs Noise Parameter}')
+    axs[1].legend(loc='best')
+    # add title
+    super_title = (rf"Qiskit simulator: qubits = {num_qubits}, "
+                   rf"steps = {steps}, "
+                   rf"circuits = {num_circuits}, "
+                   rf"numshots = {num_shots}")
     plt.suptitle(super_title, y=0.94)
 
-
     plt.tight_layout()
-    plt.savefig(plot_filename, bbox_inches='tight')
+    # plt.savefig(plot_filename, bbox_inches='tight')
     plt.show()
 
 
@@ -1383,9 +1391,12 @@ if __name__ == "__main__":
     #                       plot_filename='Plots/20250510/multi_config_plot')
     # plot_var_ratio(num_qubits=200, steps_list=range(0, 201, 40), num_circuits=50, noise_param=0.05, data_dir='data',
     #                plot_filename=None)
-    # data = collect_experiment_data([8], [0.1], range(0, 11, 1), [10])
-    # print(data)
     # plot_moments_ratio_to_noise(num_qubits=20, steps=250, num_circuits=50, noise_params_list=np.logspace(-2.5, 1, 20).tolist())
-    run_single_plot(num_qubits=20, steps_list=[250], num_circuits=50, noise_param=10)
-
-
+    # run_single_plot(num_qubits=20, steps_list=[250], num_circuits=50, noise_param=10)
+    noise_params_list = np.logspace(-2.5, 2, 20).tolist()
+    plot_qiskit_ratio_and_purity(
+            num_qubits=4,
+            steps=30,
+            num_circuits=50,
+            noise_params_list=noise_params_list,
+            num_shots=1000)
