@@ -186,11 +186,13 @@ def generate_single_circuit_parallel(params):
         # First group: even-to-odd pairs
         for i in range(0, qubits, 2):
             j = (i + 1) % qubits
+            # if j < i: continue # TODO: remove, this for OPC
             circuit.rzz(beta, i, j)
 
         # Second group: odd-to-even pairs
         for i in range(1, qubits, 2):
             j = (i + 1) % qubits
+            # if j < i: continue  # TODO: remove, this for OPC
             circuit.rzz(beta, i, j)
 
         # Apply RX gates for transverse field
@@ -199,6 +201,9 @@ def generate_single_circuit_parallel(params):
 
         # Apply dephasing noise as RZ gates if needed
         if noise_method == 'dephasing':
+            # # add local dephasing noise
+            # for i in range(qubits):
+            #     circuit.rz(np.random.randn(), i)
             circuit.rz(noisy_betas[step, circuit_idx], range(qubits))
 
     dm = DensityMatrix.from_instruction(circuit)
@@ -277,7 +282,9 @@ def count_kinks(bitstring: str) -> int:
     if n == 0:  # Handle empty string case
         return 0
     for i in range(n):  # Loop from 0 to N-1
-        if bitstring[i] != bitstring[(i + 1) % n]:  # Use modulo for periodic boundary
+        j = (i + 1) % n  # Use modulo for periodic boundary
+        # if j < i: continue # TODO: remove, this is for OPC
+        if bitstring[i] != bitstring[j]:
             count += 1
     return count
 
@@ -311,8 +318,27 @@ def process_qiskit_model(num_qubits: int, depth: int, noise_param: float, noise_
 
         # Calculate mean and variance of kinks
         kink_counts = [count_kinks(state) for state in probabilities.keys()]
-        mean_kinks = sum(k * p for k, p in zip(kink_counts, probabilities.values()))
-        var_kinks = sum((k - mean_kinks) ** 2 * p for k, p in zip(kink_counts, probabilities.values()))
+        mean_kinks0 = sum(k * p for k, p in zip(kink_counts, probabilities.values()))
+        var_kinks0 = sum((k - mean_kinks0) ** 2 * p for k, p in zip(kink_counts, probabilities.values()))
+
+
+        means = []
+        vars = []
+        for result in results:
+            counts = result['counts']  # Access counts from our dictionary
+            # Calculate probabilities
+            total_shots = sum(counts.values())
+            probabilities = {state: count / total_shots for state, count in counts.items()}
+
+            # Calculate mean and variance of kinks
+            kink_counts = [count_kinks(state) for state in probabilities.keys()]
+            mean_kinks1 = sum(k * p for k, p in zip(kink_counts, probabilities.values()))
+            var_kinks1 = sum((k - mean_kinks1) ** 2 * p for k, p in zip(kink_counts, probabilities.values()))
+            means.append(mean_kinks1)
+            vars.append(var_kinks1)
+        mean_kinks = sum(means)/len(means)
+        var_kinks = sum(vars)/len(vars)
+
 
         return {
             "mean_kinks"      : mean_kinks,
@@ -1092,6 +1118,7 @@ def _compute_single_observable(args):
         'steps'                 : step,
         'noise_param'           : noise,
         'num_circuits'          : num_circuits,
+        'density_matrices'      : runs,
         'mean_exact'            : mean_e,
         'var_exact'             : var_e,
         'mean_independent_modes': mean_i,
@@ -1324,15 +1351,15 @@ def plot_qiskit_ratio_and_purity(
         plot_filename = get_dated_plot_path(
                 f"qiskit_ratio_and_purity_noise_N{num_qubits}_steps{steps}_circ{num_circuits}.svg"
         )
+
     ratios = []
     purities = []
     for noise_par in noise_params_list:
         qiskit_results = process_qiskit_model(num_qubits=num_qubits, depth=steps, noise_param=noise_par,
-                                              noise_type='dephasing', num_circuits=num_circuits, numshots=num_shots)
+                                              noise_type='global', num_circuits=num_circuits, numshots=num_shots)
         mean = qiskit_results['mean_kinks'] / num_qubits
         var = qiskit_results['var_kinks'] / num_qubits
         ratios.append(var / mean)
-        purity = 0
         density_matrix = sum(qiskit_results['density_matrices']) / len(qiskit_results['density_matrices'])
         rho2 = density_matrix @ density_matrix
         purity = np.trace(rho2).real
@@ -1391,12 +1418,19 @@ if __name__ == "__main__":
     #                       plot_filename='Plots/20250510/multi_config_plot')
     # plot_var_ratio(num_qubits=200, steps_list=range(0, 201, 40), num_circuits=50, noise_param=0.05, data_dir='data',
     #                plot_filename=None)
-    # plot_moments_ratio_to_noise(num_qubits=20, steps=250, num_circuits=50, noise_params_list=np.logspace(-2.5, 1, 20).tolist())
+    # plot_moments_ratio_to_noise(num_qubits=20, steps=250, num_circuits=50,
+    #                             noise_params_list=np.logspace(-2.5, 1, 20).tolist())
     # run_single_plot(num_qubits=20, steps_list=[250], num_circuits=50, noise_param=10)
-    noise_params_list = np.logspace(-2.5, 2, 20).tolist()
+    noise_params_list = np.logspace(-1, 1, 10).tolist()
     plot_qiskit_ratio_and_purity(
             num_qubits=4,
-            steps=30,
-            num_circuits=50,
+            steps=10,
+            num_circuits=200,
             noise_params_list=noise_params_list,
             num_shots=1000)
+    # plot_moments_ratio_to_noise(
+    #         num_qubits=6,
+    #         steps=40,
+    #         num_circuits=100,
+    #         noise_params_list=noise_params_list,
+    # )
