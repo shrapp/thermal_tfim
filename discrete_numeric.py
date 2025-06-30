@@ -1426,7 +1426,7 @@ def compare_qiskit_and_momentum(
             # generate noise for each circuit
             # base angles are the same for all circuits, but noise is different
             noisy_base = base_angles + noise_param * np.random.randn(steps, 1)
-            betas = -np.sin(noisy_base).flatten()
+            betas =-np.sin(noisy_base).flatten() #-np.sin(base_angles).flatten()
             alphas = -np.cos(noisy_base).flatten()
 
             # compute momentum model density matrices
@@ -1605,7 +1605,7 @@ if __name__ == "__main__":
     noise_params_list = np.logspace(-2, 1, 10).tolist()
     num_qubits=4
     steps = 20
-    num_circuits = 500
+    num_circuits = 100
     num_shots = 1000
     # plot_qiskit_ratio_and_purity(
     #         num_qubits=num_qubits,
