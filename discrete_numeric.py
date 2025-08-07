@@ -1758,16 +1758,16 @@ if __name__ == "__main__":
     #         num_circuits=num_circuits,
     #         noise_params_list=noise_params_list,
     # )
-    # compare_qiskit_and_momentum(
-    #         num_qubits=num_qubits,
-    #         steps=steps,
-    #         num_circuits=num_circuits,
-    #         noise_params_list=noise_params_list,
-    #         num_shots=num_shots)
-    compare_qiskit_and_momentum_diff(
+    compare_qiskit_and_momentum(
             num_qubits=num_qubits,
             steps=steps,
-            num_circuits_list=num_circuits_list,
+            num_circuits=1,
             noise_params_list=noise_params_list,
-            num_shots=num_shots
-            )
+            num_shots=num_shots)
+    # compare_qiskit_and_momentum_diff(
+    #         num_qubits=num_qubits,
+    #         steps=steps,
+    #         num_circuits_list=num_circuits_list,
+    #         noise_params_list=noise_params_list,
+    #         num_shots=num_shots
+    #         )
