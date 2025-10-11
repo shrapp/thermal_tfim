@@ -1,4 +1,3 @@
-import pickle
 from collections import defaultdict
 
 import matplotlib
@@ -22,11 +21,11 @@ DATA_FILENAMES = {
     }
 
 g1_2_params = {
-    'num_qubits'       : 10,
+    'num_qubits'       : 6,
     'steps_list'       : [i for i in range(4)] + [i for i in range(4, 51, 2)],
-    'num_circuits'     : 100,
+    'num_circuits'     : 1000,
     'noise_params_list': [0.0, 0.2, 0.6],
-    'num_shots'        : 100,
+    'num_shots'        : 1000,
     'local_noise'      : 0.8
     }
 
@@ -132,7 +131,7 @@ def calculate_graph1_2_data(g1_2_params, filename):
                     vars_per_shot.append(np.var(kinks_for_shot_j))
                     fano_per_shot.append(
                             np.var(kinks_for_shot_j) / np.mean(kinks_for_shot_j) if np.mean(
-                                kinks_for_shot_j) != 0 else -1)
+                                    kinks_for_shot_j) != 0 else -1)
 
                 # Final statistics are the mean and std of the per-shot statistics
                 final_mean_kinks_local = np.mean(means_per_shot)
@@ -163,11 +162,11 @@ def calculate_graph1_2_data(g1_2_params, filename):
                     'qiskit_var_kinks_r_std_err_local' : std_err_var_kinks_local / g1_2_params['num_qubits'],
                     'final_fano_mean_local'            : final_fano_local,
                     'final_fano_std_err_local'         : std_err_fano_local,
-                })
+                    })
     data_to_save = {'results': g1_2_results, 'params': g1_2_params}
-    with open(filename, 'wb') as f:
-        pickle.dump(data_to_save, f)
-    print(f"Saved Graph 1&2 data to {filename}")
+    # with open(filename, 'wb') as f:
+    #     pickle.dump(data_to_save, f)
+    # print(f"Saved Graph 1&2 data to {filename}")
     return data_to_save
 
 
@@ -191,7 +190,8 @@ def plot_mean(all_data):
         mean_m = np.array([results[n][i]['mean_independent_modes'] for i in x])
 
         # Plot lines with error bars for Qiskit, and a simple line for the momentum model
-        ax.errorbar(x, mean_q_mean, yerr=mean_q_std_err, fmt='o-', capsize=3, label=f'Qiskit Global, $\\sigma={n}$', zorder=1)
+        ax.errorbar(x, mean_q_mean, yerr=mean_q_std_err, fmt='o-', capsize=3, label=f'Qiskit Global, $\\sigma={n}$',
+                    zorder=1)
         ax.plot(x, mean_m, 'x:', label=f'Momentum, $\\sigma={n}$', zorder=2)
 
     n = noise_params_list[-1]
@@ -213,6 +213,7 @@ def plot_mean(all_data):
     # plt.savefig(plot_filename, bbox_inches='tight')
     plt.show()
 
+
 def plot_variance(all_data):
     # --- Extract data for Graph 2 ---
     g2_data = all_data['graph1_2']
@@ -233,7 +234,8 @@ def plot_variance(all_data):
         var_m = np.array([results[n][i]['var_independent_modes'] for i in x])
 
         # Plot lines for each noise parameter (with error bars for Qiskit variance)
-        ax.errorbar(x, var_q_mean, yerr=var_q_std_err, fmt='o-', capsize=3, label=f'Qiskit Global, $\\sigma={n}$', zorder=1)
+        ax.errorbar(x, var_q_mean, yerr=var_q_std_err, fmt='o-', capsize=3, label=f'Qiskit Global, $\\sigma={n}$',
+                    zorder=1)
         ax.plot(x, var_m, 'x:', label=f'Momentum, $\\sigma={n}$', zorder=2)
 
     n = noise_params_list[-1]
@@ -252,6 +254,7 @@ def plot_variance(all_data):
     # plot_filename = get_dated_plot_path(f"Variance_kinks_vs_steps.svg")
     # plt.savefig(plot_filename, bbox_inches='tight')
     plt.show()
+
 
 def plot_fano(all_data):
     # --- Extract data for Graph 2 ---
@@ -272,7 +275,8 @@ def plot_fano(all_data):
         fano_m = np.array([results[n][i]['var_independent_modes'] / results[n][i]['mean_independent_modes'] for i in x])
 
         # Plot lines for each noise parameter (with error bars for Qiskit variance)
-        ax.errorbar(x, fano_q, yerr=fano_q_std_err, fmt='o-', capsize=3, label=f'Qiskit Global, $\\sigma={n}$', zorder=1)
+        ax.errorbar(x, fano_q, yerr=fano_q_std_err, fmt='o-', capsize=3, label=f'Qiskit Global, $\\sigma={n}$',
+                    zorder=1)
         ax.plot(x, fano_m, 'x:', label=f'Momentum, $\\sigma={n}$', zorder=2)
 
     n = noise_params_list[-1]
@@ -295,16 +299,14 @@ def plot_fano(all_data):
 
 if __name__ == "__main__":
     all_data = {}
-    try:
-        with open(DATA_FILENAMES['graph1_2'], 'rb') as f:
-            all_data['graph1_2'] = pickle.load(f)
-        print(f"Successfully loaded data from {DATA_FILENAMES['graph1_2']}")
-    except (FileNotFoundError, EOFError):
-        print(f"Could not load data for Graph 1&2. Calculating new data...")
-        all_data['graph1_2'] = calculate_graph1_2_data(g1_2_params, DATA_FILENAMES['graph1_2'])
-    # all_data['graph1_2'] = calculate_graph1_2_data(g1_2_params, DATA_FILENAMES['graph1_2'])
-    # plot_mean(all_data)
-    # plot_variance(all_data)
+    # try:
+    #     with open(DATA_FILENAMES['graph1_2'], 'rb') as f:
+    #         all_data['graph1_2'] = pickle.load(f)
+    #     print(f"Successfully loaded data from {DATA_FILENAMES['graph1_2']}")
+    # except (FileNotFoundError, EOFError):
+    #     print(f"Could not load data for Graph 1&2. Calculating new data...")
+    #     all_data['graph1_2'] = calculate_graph1_2_data(g1_2_params, DATA_FILENAMES['graph1_2'])
+    all_data['graph1_2'] = calculate_graph1_2_data(g1_2_params, DATA_FILENAMES['graph1_2'])
+    plot_mean(all_data)
+    plot_variance(all_data)
     plot_fano(all_data)
-
-
