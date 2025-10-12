@@ -1,0 +1,74 @@
+1. 17/03/2024 - 
+I have searched for a difference between a maximal mixed state and a pure X state for the kink calculation and there is no difference.
+That means that i should come back to the same values after the maximal noise is applied.
+My code seams to take me from periodic to open boundary conditions and its obviously wrong.
+why if for every k the probability is 0.5 , the kink prob is not the same?
+
+2. 31/03/2024 - 
+I have found the error in the code. I didnt write the correct noise matrix (dissipator).
+I have to try run it again and see if the results are correct.
+
+3. 12/05/2024 -
+The wide MMS is actually a steady state of both the hamiltonian comutator and the dissipator.
+We should understand why its make sense and does it even possible to get back into the maximal mixed state with any noise.
+- write our findings so far
+- solve the analitycal derivation with parameters (g and noise seperately)
+- run qiskit for small system
+
+4. 04/06/2024 -
+I have found that the moments of the Kinks number operator are changing with the correlation of k+ and k-.
+- Now i would like to find a noise that will get me back to the maximal mixed state. (maybe only numerically)
+- lets try to go back to the thermal state goal.
+
+5. 19/09/2024 -
+- Last time we have spoke about the research we suggested to use the variance as a measure for the noise.
+- We suggested to try a exponential decay from rho to maximal mixed state.
+- Lets plot the Varience as a function of t for noisy simulation and for depolarization model - e^(-a*t)*rho + (1-e^(-a*t))*I/2^n
+- Lets try to fit with ther mean and look what happwns to the variance.
+- 2 plots (Varience and mean) for the two models
+
+6. 28/10/2024 -
+- I have trouble starting implementing my new model.
+- lets try to plan small steps to get to the goal.
+- a. write the new model explicitly
+- b. define each part of the model and write the code for it
+- c. run the model for small system and check if the results are as expected
+
+7. 30/10/2024 - 
+- I have written the new model explicitly.
+- I have run the model for small system and the results are kind of what i expected.
+- I dont exectly have a vision of what i want to do next.
+
+8. 17/11/2024 - 
+- We have suggested to check how open boundary conditions affect the results.
+- We have suggested to check how local dephasing instead of gloabl noise affects the results of the purity.
+- we thought about the possibility that the purity represent a majorana fermion in the system.
+- maybe we sould try the sudden quench model.
+
+9. 02/12/2024 -
+- I should find the purity of the numerical results.
+- I should plot some purity results for bigger systems and with log2 scael.
+- i should try to run a depolarization model for a numeric noise to local noise.
+- maybe i can use Daniels code for the calculations.
+- Sign up for the conference.
+
+10. 16/12/2024 -`
+- try 1D hatree fock model for description of the system.
+- simulate a model like:  H = J * S_z^2 + g(t) * S_x
+
+11. 06/01/2025 -
+- Find the time scales for each model behaviors.
+- Write a discrete numeric model for the system.
+- Find the G.S of the system for an arbitrary g(t) and let state evolve only under noise.
+
+12. 20/01/2025 -
+- Align graphs with L2 norm.
+- choose parameters with less noise
+- plot with the boundaries' data
+- show the variance plots too
+
+13. 17/02/2025 -
+- build a discrete numeric model with delta t = 1 and a changing hamiltionian for every step.
+
+14. 24/02/2025 -
+- I have problems with the numeric model, should try a simpler model at first.
