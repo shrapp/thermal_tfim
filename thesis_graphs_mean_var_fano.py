@@ -1,4 +1,7 @@
+import multiprocessing
+import pickle  # Added for saving/loading
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import matplotlib
 import numpy as np
@@ -20,293 +23,342 @@ DATA_FILENAMES = {
     'graph5'  : "graph5_data.pkl"
     }
 
-g1_2_params = {
-    'num_qubits'       : 6,
-    'steps_list'       : [i for i in range(4)] + [i for i in range(4, 51, 2)],
-    'num_circuits'     : 1000,
-    'noise_params_list': [0.0, 0.2, 0.6],
-    'num_shots'        : 1000,
-    'local_noise'      : 0.8
-    }
+
+def compute_steps_data(steps, noise_param, params, is_last_noise):
+    """Helper function to compute data for a single 'steps' value. Run in parallel."""
+    base_angles = (np.pi / 2) * np.arange(1, steps + 1) / (steps + 1)
+    base_angles = base_angles[:, np.newaxis]
+    momentum_dms, qiskit_circs, local_circuits = [], [], []
+
+    ks = k_f(params['num_qubits'])
+
+    num_qubits = params['num_qubits']
+    num_circuits = params['num_circuits']
+    num_shots = params['num_shots']
+
+    for _ in range(num_circuits):
+        noisy_base = base_angles + noise_param * np.random.randn(steps, 1)
+        betas, alphas = -np.sin(noisy_base).flatten(), -np.cos(noisy_base).flatten()
+        sol = [tfim_momentum_trotter_single_k(k, steps, betas, alphas, 0) for k in ks]
+        momentum_dms.append(sol)
+
+        # Global noise circuit
+        circuit = QuantumCircuit(num_qubits, num_qubits)
+        circuit.h(range(num_qubits))
+        for step in range(steps):
+            for i in range(0, num_qubits, 2):
+                circuit.rzz(betas[step], i, (i + 1) % num_qubits)
+            for i in range(1, num_qubits, 2):
+                circuit.rzz(betas[step], i, (i + 1) % num_qubits)
+            circuit.rx(alphas[step], range(num_qubits))
+        circuit.measure(range(num_qubits), range(num_qubits))
+        qiskit_circs.append(circuit)
+
+        if is_last_noise:
+            # Local noise circuit (only for last noise param)
+            betas_local = -np.sin(base_angles).flatten()
+            alphas_local = -np.cos(base_angles).flatten()
+            local_circuit = QuantumCircuit(num_qubits, num_qubits)
+            local_circuit.h(range(num_qubits))
+            for step in range(steps):
+                for i in range(0, num_qubits, 2):
+                    local_circuit.rzz(betas_local[step], i, (i + 1) % num_qubits)
+                for i in range(1, num_qubits, 2):
+                    local_circuit.rzz(betas_local[step], i, (i + 1) % num_qubits)
+                local_circuit.rx(alphas_local[step], range(num_qubits))
+                for qubit in range(num_qubits):
+                    local_circuit.rz(np.random.randn() * noise_param, qubit)
+            local_circuit.measure(range(num_qubits), range(num_qubits))
+            local_circuits.append(local_circuit)
+
+    # Momentum model calculation
+    mean_i, var_i = process_step(step_density_matrices=momentum_dms, ks=ks,
+                                 num_qubits=num_qubits, method="rho")
+
+    # Qiskit global noise calculation
+    simulator = AerSimulator()
+    transpiled_circuits = transpile(qiskit_circs, simulator)
+    job_result = simulator.run(transpiled_circuits, shots=num_shots, memory=True).result()
+
+    kink_counts_matrix = np.zeros((len(qiskit_circs), num_shots))
+    for i in range(len(qiskit_circs)):
+        outcomes = job_result.get_memory(i)
+        kink_counts_matrix[i, :] = [count_kinks(state) for state in outcomes]
+
+    # Per-shot stats for global
+    means_per_shot, vars_per_shot, fano_per_shot = _compute_per_shot_stats(kink_counts_matrix)
+
+    final_mean_kinks = np.mean(means_per_shot) / num_qubits
+    std_err_mean_kinks = np.std(means_per_shot) / num_qubits
+    final_var_kinks = np.mean(vars_per_shot) / num_qubits
+    std_err_var_kinks = np.std(vars_per_shot) / num_qubits
+    valid_fano = [f for f in fano_per_shot if f != -1]
+    final_fano = np.mean(valid_fano) if valid_fano else -1
+    std_err_fano = np.std(valid_fano) if valid_fano else 0
+
+    result = {
+        'mean_independent_modes'     : mean_i,
+        'qiskit_mean_kinks_r_mean'   : final_mean_kinks,
+        'qiskit_mean_kinks_r_std_err': std_err_mean_kinks,
+        'var_independent_modes'      : var_i,
+        'qiskit_var_kinks_r_mean'    : final_var_kinks,
+        'qiskit_var_kinks_r_std_err' : std_err_var_kinks,
+        'final_fano_mean'            : final_fano,
+        'final_fano_std_err'         : std_err_fano,
+        }
+
+    if is_last_noise:
+        # Qiskit local noise calculation (duplicated logic for brevity; could extract further)
+        transpiled_circuits = transpile(local_circuits, simulator)
+        job_result = simulator.run(transpiled_circuits, shots=num_shots, memory=True).result()
+
+        kink_counts_matrix = np.zeros((len(local_circuits), num_shots))
+        for i in range(len(local_circuits)):
+            outcomes = job_result.get_memory(i)
+            kink_counts_matrix[i, :] = [count_kinks(state) for state in outcomes]
+
+        means_per_shot, vars_per_shot, fano_per_shot = _compute_per_shot_stats(kink_counts_matrix)
+
+        final_mean_kinks_local = np.mean(means_per_shot) / num_qubits
+        std_err_mean_kinks_local = np.std(means_per_shot) / num_qubits
+        final_var_kinks_local = np.mean(vars_per_shot) / num_qubits
+        std_err_var_kinks_local = np.std(vars_per_shot) / num_qubits
+        valid_fano_local = [f for f in fano_per_shot if f != -1]
+        final_fano_local = np.mean(valid_fano_local) if valid_fano_local else -1
+        std_err_fano_local = np.std(valid_fano_local) if valid_fano_local else 0
+
+        result.update({
+            'qiskit_mean_kinks_r_mean_local'   : final_mean_kinks_local,
+            'qiskit_mean_kinks_r_std_err_local' : std_err_mean_kinks_local,
+            'qiskit_var_kinks_r_mean_local'    : final_var_kinks_local,
+            'qiskit_var_kinks_r_std_err_local' : std_err_var_kinks_local,
+            'final_fano_mean_local'            : final_fano_local,
+            'final_fano_std_err_local'         : std_err_fano_local,
+            })
+
+    return steps, result
 
 
-def calculate_graph1_2_data(g1_2_params, filename):
-    """Calculates data for Graph 1 and 2 and saves it to a file."""
-    ks = k_f(g1_2_params['num_qubits'])
-    g1_2_results = defaultdict(dict)
+def _compute_per_shot_stats(kink_counts_matrix):
+    """Helper to compute per-shot means, vars, and Fano factors."""
+    num_shots = kink_counts_matrix.shape[1]
+    means_per_shot, vars_per_shot, fano_per_shot = [], [], []
+    for j in range(num_shots):
+        kinks_for_shot_j = kink_counts_matrix[:, j]
+        means_per_shot.append(np.mean(kinks_for_shot_j))
+        vars_per_shot.append(np.var(kinks_for_shot_j))
+        mean_kinks = np.mean(kinks_for_shot_j)
+        fano_per_shot.append(np.var(kinks_for_shot_j) / mean_kinks if mean_kinks != 0 else -1)
+    return means_per_shot, vars_per_shot, fano_per_shot
 
-    for noise_param in tqdm(g1_2_params['noise_params_list'], desc="Noise (G1, G2)"):
-        for steps in tqdm(g1_2_params['steps_list'], desc="Steps", leave=False):
-            base_angles = (np.pi / 2) * np.arange(1, steps + 1) / (steps + 1)
-            base_angles = base_angles[:, np.newaxis]
-            momentum_dms, qiskit_circs, local_circuits = [], [], []
-            for _ in range(g1_2_params['num_circuits']):
-                noisy_base = base_angles + noise_param * np.random.randn(steps, 1)
-                betas, alphas = -np.sin(noisy_base).flatten(), -np.cos(noisy_base).flatten()
-                sol = [tfim_momentum_trotter_single_k(k, steps, betas, alphas, 0) for k in ks]
-                momentum_dms.append(sol)
-                circuit = QuantumCircuit(g1_2_params['num_qubits'], g1_2_params['num_qubits'])
-                circuit.h(range(g1_2_params['num_qubits']))
-                for step in range(steps):
-                    for i in range(0, g1_2_params['num_qubits'], 2):
-                        circuit.rzz(betas[step], i, (i + 1) % g1_2_params['num_qubits'])
-                    for i in range(1, g1_2_params['num_qubits'], 2):
-                        circuit.rzz(betas[step], i, (i + 1) % g1_2_params['num_qubits'])
-                    circuit.rx(alphas[step], range(g1_2_params['num_qubits']))
-                circuit.measure(range(g1_2_params['num_qubits']), range(g1_2_params['num_qubits']))
-                qiskit_circs.append(circuit)
 
-                if noise_param == g1_2_params['noise_params_list'][-1]:
-                    # add local noise
-                    betas = -np.sin(base_angles).flatten()
-                    alphas = -np.cos(base_angles).flatten()
-                    local_circuit = QuantumCircuit(g1_2_params['num_qubits'], g1_2_params['num_qubits'])
-                    local_circuit.h(range(g1_2_params['num_qubits']))
-                    for step in range(steps):
-                        for i in range(0, g1_2_params['num_qubits'], 2):
-                            local_circuit.rzz(betas[step], i, (i + 1) % g1_2_params['num_qubits'])
-                        for i in range(1, g1_2_params['num_qubits'], 2):
-                            local_circuit.rzz(betas[step], i, (i + 1) % g1_2_params['num_qubits'])
-                        local_circuit.rx(alphas[step], range(g1_2_params['num_qubits']))
-                        for qubit in range(g1_2_params['num_qubits']):
-                            local_circuit.rz(np.random.randn() * noise_param, qubit)
-                    local_circuit.measure(range(g1_2_params['num_qubits']), range(g1_2_params['num_qubits']))
-                    local_circuits.append(local_circuit)
+def calculate_graph_data(params, filename, compute=True):
+    """Calculates data for a graph (e.g., graph1_2) and optionally saves it. Parallelized over steps."""
+    if not compute:
+        return {}
 
-            # Momentum model calculation (once per data point)
-            mean_i, var_i = process_step(step_density_matrices=momentum_dms, ks=ks,
-                                         num_qubits=g1_2_params['num_qubits'], method="rho")
+    ks = k_f(params['num_qubits'])
+    results = defaultdict(dict)
+    last_noise_param = params['noise_params_list'][-1]
 
-            # Qiskit calculation with per-shot statistics
-            simulator = AerSimulator()
+    for noise_param in tqdm(params['noise_params_list'], desc="Noise"):
+        is_last_noise = (noise_param == last_noise_param)
 
-            transpiled_circuits = transpile(qiskit_circs, simulator)
-            job_result = simulator.run(transpiled_circuits, shots=g1_2_params['num_shots'], memory=True).result()
+        max_workers = min(len(params['steps_list']), multiprocessing.cpu_count())
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(compute_steps_data, steps, noise_param, params, is_last_noise): steps
+                       for steps in params['steps_list']}
 
-            # Create a matrix of kink counts: (num_circuits, num_shots)
-            kink_counts_matrix = np.zeros((len(qiskit_circs), g1_2_params['num_shots']))
-            for i in range(len(qiskit_circs)):
-                outcomes = job_result.get_memory(i)
-                kink_counts_matrix[i, :] = [count_kinks(state) for state in outcomes]
+            for future in tqdm(as_completed(futures), total=len(futures), desc="Steps (parallel)", leave=False):
+                steps, step_result = future.result()
+                results[noise_param][steps] = step_result
 
-            # Calculate stats for each shot index across all circuits
-            means_per_shot = []
-            vars_per_shot = []
-            fano_per_shot = []
-            for j in range(g1_2_params['num_shots']):
-                kinks_for_shot_j = kink_counts_matrix[:, j]
-                means_per_shot.append(np.mean(kinks_for_shot_j))
-                vars_per_shot.append(np.var(kinks_for_shot_j))
-                fano_per_shot.append(
-                        np.var(kinks_for_shot_j) / np.mean(kinks_for_shot_j) if np.mean(kinks_for_shot_j) != 0 else -1)
-
-            # Final statistics are the mean and std of the per-shot statistics
-            final_mean_kinks = np.mean(means_per_shot)
-            std_err_mean_kinks = np.std(means_per_shot)
-
-            final_var_kinks = np.mean(vars_per_shot)
-            std_err_var_kinks = np.std(vars_per_shot)
-
-            fano_per_shot = [f for f in fano_per_shot if f != -1]  # Filter out invalid Fano factors
-            final_fano = np.mean(fano_per_shot)
-            std_err_fano = np.std(fano_per_shot)
-
-            if noise_param == g1_2_params['noise_params_list'][-1]:
-                transpiled_circuits = transpile(local_circuits, simulator)
-                job_result = simulator.run(transpiled_circuits, shots=g1_2_params['num_shots'], memory=True).result()
-
-                # Create a matrix of kink counts: (num_circuits, num_shots)
-                kink_counts_matrix = np.zeros((len(local_circuits), g1_2_params['num_shots']))
-                for i in range(len(local_circuits)):
-                    outcomes = job_result.get_memory(i)
-                    kink_counts_matrix[i, :] = [count_kinks(state) for state in outcomes]
-
-                # Calculate stats for each shot index across all circuits
-                means_per_shot = []
-                vars_per_shot = []
-                fano_per_shot = []
-                for j in range(g1_2_params['num_shots']):
-                    kinks_for_shot_j = kink_counts_matrix[:, j]
-                    means_per_shot.append(np.mean(kinks_for_shot_j))
-                    vars_per_shot.append(np.var(kinks_for_shot_j))
-                    fano_per_shot.append(
-                            np.var(kinks_for_shot_j) / np.mean(kinks_for_shot_j) if np.mean(
-                                    kinks_for_shot_j) != 0 else -1)
-
-                # Final statistics are the mean and std of the per-shot statistics
-                final_mean_kinks_local = np.mean(means_per_shot)
-                std_err_mean_kinks_local = np.std(means_per_shot)
-
-                final_var_kinks_local = np.mean(vars_per_shot)
-                std_err_var_kinks_local = np.std(vars_per_shot)
-
-                fano_per_shot = [f for f in fano_per_shot if f != -1]  # Filter out invalid Fano factors
-                final_fano_local = np.mean(fano_per_shot)
-                std_err_fano_local = np.std(fano_per_shot)
-
-            g1_2_results[noise_param][steps] = {
-                'mean_independent_modes'     : mean_i,
-                'qiskit_mean_kinks_r_mean'   : final_mean_kinks / g1_2_params['num_qubits'],
-                'qiskit_mean_kinks_r_std_err': std_err_mean_kinks / g1_2_params['num_qubits'],
-                'var_independent_modes'      : var_i,
-                'qiskit_var_kinks_r_mean'    : final_var_kinks / g1_2_params['num_qubits'],
-                'qiskit_var_kinks_r_std_err' : std_err_var_kinks / g1_2_params['num_qubits'],
-                'final_fano_mean'            : final_fano,
-                'final_fano_std_err'         : std_err_fano,
-                }
-            if noise_param == g1_2_params['noise_params_list'][-1]:
-                g1_2_results[noise_param][steps].update({
-                    'qiskit_mean_kinks_r_mean_local'   : final_mean_kinks_local / g1_2_params['num_qubits'],
-                    'qiskit_mean_kinks_r_std_err_local': std_err_mean_kinks_local / g1_2_params['num_qubits'],
-                    'qiskit_var_kinks_r_mean_local'    : final_var_kinks_local / g1_2_params['num_qubits'],
-                    'qiskit_var_kinks_r_std_err_local' : std_err_var_kinks_local / g1_2_params['num_qubits'],
-                    'final_fano_mean_local'            : final_fano_local,
-                    'final_fano_std_err_local'         : std_err_fano_local,
-                    })
-    data_to_save = {'results': g1_2_results, 'params': g1_2_params}
-    # with open(filename, 'wb') as f:
-    #     pickle.dump(data_to_save, f)
-    # print(f"Saved Graph 1&2 data to {filename}")
+    data_to_save = {'results': results, 'params': params}
+    with open(filename, 'wb') as f:
+        pickle.dump(data_to_save, f)
+    print(f"Saved data to {filename}")
     return data_to_save
 
 
-def plot_mean(all_data):
-    # --- Extract data for Graph 1 ---
-    g1_data = all_data['graph1_2']
-    results = g1_data['results']
-    params = g1_data['params']
-    steps_list = params['steps_list']
-    noise_params_list = params['noise_params_list']
+def load_graph_data(filename):
+    """Loads existing data for a graph."""
+    try:
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
+    except (FileNotFoundError, EOFError):
+        print(f"Could not load data from {filename}.")
+        return {}
 
-    # --- Plotting ---
+
+def plot_metric_vs_steps(graph_data, metric_key, ylabel, title, show=True, save_path=None):
+    """
+    Generic helper to plot a metric (e.g., mean kinks, variance, Fano) vs. steps.
+
+    Args:
+        graph_data: Dict with 'results' and 'params'.
+        metric_key: String like 'mean_kinks' to select extraction lambdas.
+        ylabel: Y-axis label (e.g., r'\textbf{Mean Kinks / N}').
+        title: Plot title (e.g., r'\textbf{Normalized Mean Kinks vs. Steps}').
+        show, save_path: As in original functions.
+    """
+    if not graph_data:
+        return
+    results, params = graph_data['results'], graph_data['params']
+    steps_list, noise_params_list = params['steps_list'], params['noise_params_list']
+
+    # Color maps: Qiskit (base, muted), Momentum (top, vibrant/contrasting)
+    colors_qiskit = {0.0: 'black', 0.2: '#ff7f00', 0.6: '#1f77b4'}  # black, orange, blue
+    colors_momentum = {0.0: '#d62728', 0.2: '#9467bd', 0.6: '#2ca02c'}  # red, purple, green
+
+    # Metric-specific data extractors (lambdas for flexibility)
+    if metric_key == 'mean_kinks':
+        q_global_mean = lambda n, i: results[n][i]['qiskit_mean_kinks_r_mean']
+        q_global_std = lambda n, i: results[n][i]['qiskit_mean_kinks_r_std_err']
+        momentum_val = lambda n, i: results[n][i]['mean_independent_modes']
+        q_local_mean = lambda n, i: results[n][i]['qiskit_mean_kinks_r_mean_local']
+        q_local_std = lambda n, i: results[n][i]['qiskit_mean_kinks_r_std_err_local']
+        marker_global, marker_local = 'o', 's'
+    elif metric_key == 'variance':
+        q_global_mean = lambda n, i: results[n][i]['qiskit_var_kinks_r_mean']
+        q_global_std = lambda n, i: results[n][i]['qiskit_var_kinks_r_std_err']
+        momentum_val = lambda n, i: results[n][i]['var_independent_modes']
+        q_local_mean = lambda n, i: results[n][i]['qiskit_var_kinks_r_mean_local']
+        q_local_std = lambda n, i: results[n][i]['qiskit_var_kinks_r_std_err_local']
+        marker_global, marker_local = 'o', 's'
+    elif metric_key == 'fano':
+        q_global_mean = lambda n, i: results[n][i]['final_fano_mean']
+        q_global_std = lambda n, i: results[n][i]['final_fano_std_err']
+        momentum_val = lambda n, i: results[n][i]['var_independent_modes'] / results[n][i]['mean_independent_modes']
+        q_local_mean = lambda n, i: results[n][i]['final_fano_mean_local']
+        q_local_std = lambda n, i: results[n][i]['final_fano_std_err_local']
+        marker_global, marker_local = 'o', 's'
+    else:
+        raise ValueError(f"Unsupported metric_key: {metric_key}")
+
     pyplot_settings()
     fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-
     x = np.array(steps_list)
+
     for n in noise_params_list:
-        # Extract mean and std values for Qiskit and the momentum model
-        mean_q_mean = np.array([results[n][i]['qiskit_mean_kinks_r_mean'] for i in x])
-        mean_q_std_err = np.array([results[n][i]['qiskit_mean_kinks_r_std_err'] for i in x])
-        mean_m = np.array([results[n][i]['mean_independent_modes'] for i in x])
+        color_q = colors_qiskit[n]
+        color_m = colors_momentum[n]
+        # Extract data using lambdas
+        q_vals = np.array([q_global_mean(n, i) for i in x])
+        q_errs = np.array([q_global_std(n, i) for i in x])
+        m_vals = np.array([momentum_val(n, i) for i in x])
+        # Plot Qiskit Global first (lower zorder, muted color)
+        ax.errorbar(x, q_vals, yerr=q_errs, fmt=f'{marker_global}-', capsize=3,
+                    label=f'Qiskit Global, $\\sigma={n}$', zorder=1, color=color_q)
+        # Plot Momentum last (higher zorder, contrasting color)
+        ax.plot(x, m_vals, 'x:', label=f'Momentum, $\\sigma={n}$', zorder=3, color=color_m)
 
-        # Plot lines with error bars for Qiskit, and a simple line for the momentum model
-        ax.errorbar(x, mean_q_mean, yerr=mean_q_std_err, fmt='o-', capsize=3, label=f'Qiskit Global, $\\sigma={n}$',
-                    zorder=1)
-        ax.plot(x, mean_m, 'x:', label=f'Momentum, $\\sigma={n}$', zorder=2)
-
+    # Local noise (reuse Qiskit color, dashed for distinction, medium zorder)
     n = noise_params_list[-1]
-    mean_q_mean = np.array([results[n][i]['qiskit_mean_kinks_r_mean_local'] for i in x])
-    mean_q_std_err = np.array([results[n][i]['qiskit_mean_kinks_r_std_err_local'] for i in x])
-
-    # Plot lines with error bars for Qiskit, and a simple line for the momentum model
-    ax.errorbar(x, mean_q_mean, yerr=mean_q_std_err, fmt='s', capsize=3, label=f'Qiskit Local, $\\sigma={n}$', zorder=1)
+    color_local = colors_qiskit[n]
+    q_local_vals = np.array([q_local_mean(n, i) for i in x])
+    q_local_errs = np.array([q_local_std(n, i) for i in x])
+    ax.errorbar(x, q_local_vals, yerr=q_local_errs, fmt=f'{marker_local}--', capsize=3,
+                label=f'Qiskit Local, $\\sigma={n}$', zorder=2, color=color_local)
 
     ax.set_xlabel(r'\textbf{Steps}')
-    ax.set_ylabel(r'\textbf{Mean Kinks / N}')
-    ax.set_title(r'\textbf{Normalized Mean Kinks vs. Steps}')
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
     ax.grid(True)
-    legend_title = f"{params['num_circuits']} Circuits, {params['num_shots']} Shots"
+    legend_title = f"{params['num_qubits']} Qubits, {params['num_circuits']} Circuits, {params['num_shots']} Shots"
     ax.legend(title=legend_title, loc='center left', bbox_to_anchor=(1, 0.5))
-
     plt.tight_layout(rect=(0, 0, 1, 1))
-    # plot_filename = get_dated_plot_path(f"Mean_kinks_vs_steps.svg")
-    # plt.savefig(plot_filename, bbox_inches='tight')
-    plt.show()
+
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+    if show:
+        plt.show()
 
 
-def plot_variance(all_data):
-    # --- Extract data for Graph 2 ---
-    g2_data = all_data['graph1_2']
-    results = g2_data['results']
-    params = g2_data['params']
-    steps_list = params['steps_list']
-    noise_params_list = params['noise_params_list']
-
-    # --- Plotting ---
-    pyplot_settings()
-    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-
-    x = np.array(steps_list)
-    for n in noise_params_list:
-        # Extract variance values for Qiskit and the momentum model
-        var_q_mean = np.array([results[n][i]['qiskit_var_kinks_r_mean'] for i in x])
-        var_q_std_err = np.array([results[n][i]['qiskit_var_kinks_r_std_err'] for i in x])
-        var_m = np.array([results[n][i]['var_independent_modes'] for i in x])
-
-        # Plot lines for each noise parameter (with error bars for Qiskit variance)
-        ax.errorbar(x, var_q_mean, yerr=var_q_std_err, fmt='o-', capsize=3, label=f'Qiskit Global, $\\sigma={n}$',
-                    zorder=1)
-        ax.plot(x, var_m, 'x:', label=f'Momentum, $\\sigma={n}$', zorder=2)
-
-    n = noise_params_list[-1]
-    var_q_mean = np.array([results[n][i]['qiskit_var_kinks_r_mean_local'] for i in x])
-    var_q_std_err = np.array([results[n][i]['qiskit_var_kinks_r_std_err_local'] for i in x])
-    ax.errorbar(x, var_q_mean, yerr=var_q_std_err, fmt='s-', capsize=3, label=f'Qiskit Local, $\\sigma={n}$', zorder=1)
-
-    ax.set_xlabel(r'\textbf{Steps}')
-    ax.set_ylabel(r'\textbf{Variance / N}')
-    ax.set_title(r'\textbf{Normalized Kink Variance vs. Steps}')
-    ax.grid(True)
-    legend_title = f"{params['num_circuits']} Circuits, {params['num_shots']} Shots"
-    ax.legend(title=legend_title, loc='center left', bbox_to_anchor=(1, 0.5))
-
-    plt.tight_layout(rect=(0, 0, 1, 1))
-    # plot_filename = get_dated_plot_path(f"Variance_kinks_vs_steps.svg")
-    # plt.savefig(plot_filename, bbox_inches='tight')
-    plt.show()
+# Wrapper functions for backward compatibility (call the helper)
+def plot_mean_kinks(graph_data, show=True, save_path=None):
+    plot_metric_vs_steps(graph_data, 'mean_kinks',
+                         r'\textbf{Mean Kinks / N}',
+                         r'\textbf{Normalized Mean Kinks vs. Steps}',
+                         show=show, save_path=save_path)
 
 
-def plot_fano(all_data):
-    # --- Extract data for Graph 2 ---
-    g2_data = all_data['graph1_2']
-    results = g2_data['results']
-    params = g2_data['params']
-    steps_list = params['steps_list']
-    noise_params_list = params['noise_params_list']
+def plot_variance(graph_data, show=True, save_path=None):
+    plot_metric_vs_steps(graph_data, 'variance',
+                         r'\textbf{Variance / N}',
+                         r'\textbf{Normalized Kink Variance vs. Steps}',
+                         show=show, save_path=save_path)
 
-    # --- Plotting ---
-    pyplot_settings()
-    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
 
-    x = np.array(steps_list)
-    for n in noise_params_list:
-        fano_q = np.array([results[n][i]['final_fano_mean'] for i in x])
-        fano_q_std_err = np.array([results[n][i]['final_fano_std_err'] for i in x])
-        fano_m = np.array([results[n][i]['var_independent_modes'] / results[n][i]['mean_independent_modes'] for i in x])
+def plot_fano_factor(graph_data, show=True, save_path=None):
+    plot_metric_vs_steps(graph_data, 'fano',
+                         r'\textbf{Fano Factor}',
+                         r'\textbf{Fano Factor vs. Steps}',
+                         show=show, save_path=save_path)
 
-        # Plot lines for each noise parameter (with error bars for Qiskit variance)
-        ax.errorbar(x, fano_q, yerr=fano_q_std_err, fmt='o-', capsize=3, label=f'Qiskit Global, $\\sigma={n}$',
-                    zorder=1)
-        ax.plot(x, fano_m, 'x:', label=f'Momentum, $\\sigma={n}$', zorder=2)
 
-    n = noise_params_list[-1]
-    fano_q = np.array([results[n][i]['final_fano_mean_local'] for i in x])
-    fano_q_std_err = np.array([results[n][i]['final_fano_std_err_local'] for i in x])
-    ax.errorbar(x, fano_q, yerr=fano_q_std_err, fmt='s-', capsize=3, label=f'Qiskit Local, $\\sigma={n}$', zorder=1)
+def run_simulation(graph_key='graph1_2', params=None, compute=True, load_if_exists=True,
+                   enable_mean_plot=True, enable_variance_plot=True, enable_fano_plot=True,
+                   save_plots=False, show_plots=True):
+    """
+    Central runner for the simulation workflow.
 
-    ax.set_xlabel(r'\textbf{Steps}')
-    ax.set_ylabel(r'\textbf{Fano Factor}')
-    ax.set_title(r'\textbf{Fano Factor vs. Steps}')
-    ax.grid(True)
-    legend_title = f"{params['num_circuits']} Circuits, {params['num_shots']} Shots"
-    ax.legend(title=legend_title, loc='center left', bbox_to_anchor=(1, 0.5))
+    Args:
+        graph_key: Key for DATA_FILENAMES (e.g., 'graph1_2').
+        params: Dict of parameters (defaults to g1_2_params if None).
+        compute: If True, compute new data (overrides load_if_exists).
+        load_if_exists: If True and compute=False, load existing data.
+        enable_*_plot: Booleans to enable/disable specific plots.
+        save_plots: If True, save plots to dated paths (implement get_dated_plot_path if needed).
+        show_plots: If True, display plots via plt.show().
+    """
+    if params is None:
+        params = {
+            'num_qubits'       : 10,
+            'steps_list'       : [i for i in range(4)] + [i for i in range(4, 51, 2)],
+            'num_circuits'     : 1000,
+            'noise_params_list': [0.0, 0.2, 0.6],
+            'num_shots'        : 1000,
+            }
 
-    plt.tight_layout(rect=(0, 0, 1, 1))
-    # plot_filename = get_dated_plot_path(f"Variance_kinks_vs_steps.svg")
-    # plt.savefig(plot_filename, bbox_inches='tight')
-    plt.show()
+    filename = DATA_FILENAMES[graph_key]
+    graph_data = {}
+
+    if compute:
+        print(f"Computing data for {graph_key}...")
+        graph_data = calculate_graph_data(params, filename, compute=True)
+    elif load_if_exists:
+        print(f"Loading data for {graph_key}...")
+        graph_data = load_graph_data(filename)
+
+    all_data = {graph_key: graph_data}
+
+    # Generate plots based on flags
+    plot_paths = {}
+    if enable_mean_plot:
+        path = f"mean_kinks_vs_steps.svg" if save_plots else None
+        plot_mean_kinks(graph_data, show=show_plots, save_path=path)
+        plot_paths['mean'] = path
+    if enable_variance_plot:
+        path = f"variance_kinks_vs_steps.svg" if save_plots else None
+        plot_variance(graph_data, show=show_plots, save_path=path)
+        plot_paths['variance'] = path
+    if enable_fano_plot:
+        path = f"fano_factor_vs_steps.svg" if save_plots else None
+        plot_fano_factor(graph_data, show=show_plots, save_path=path)
+        plot_paths['fano'] = path
+
+    if save_plots:
+        print(f"Plots saved: {plot_paths}")
 
 
 if __name__ == "__main__":
-    all_data = {}
-    # try:
-    #     with open(DATA_FILENAMES['graph1_2'], 'rb') as f:
-    #         all_data['graph1_2'] = pickle.load(f)
-    #     print(f"Successfully loaded data from {DATA_FILENAMES['graph1_2']}")
-    # except (FileNotFoundError, EOFError):
-    #     print(f"Could not load data for Graph 1&2. Calculating new data...")
-    #     all_data['graph1_2'] = calculate_graph1_2_data(g1_2_params, DATA_FILENAMES['graph1_2'])
-    all_data['graph1_2'] = calculate_graph1_2_data(g1_2_params, DATA_FILENAMES['graph1_2'])
-    plot_mean(all_data)
-    plot_variance(all_data)
-    plot_fano(all_data)
+    # Example usage: Compute and plot all, or customize
+    run_simulation(
+            graph_key='graph1_2',
+            compute=False,  # Set False to skip computation
+            enable_mean_plot=True,
+            enable_variance_plot=True,
+            enable_fano_plot=True,
+            save_plots=True,  # Set True to save (add get_dated_plot_path if needed)
+            show_plots=True
+            )
