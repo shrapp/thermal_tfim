@@ -1,6 +1,7 @@
 /.idea/
 /venv/
 /Plots/
-/.github/git-commit-instructions.md
+/.github/
 /__pycache__/
 *.DS_Store
+/.vscode/
