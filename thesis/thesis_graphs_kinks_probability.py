@@ -194,6 +194,6 @@ if __name__ == "__main__":
     run_kink_distributions(
             compute=False,  # Set False to skip computation
             enable_plot=True,
-            save_plot=False,  # Set True to save
+            save_plot=True,  # Set True to save
             show_plot=True
             )
