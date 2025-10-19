@@ -3,3 +3,4 @@
 /.DS_Store
 /Plots/
 /.github/git-commit-instructions.md
+/__pycache__/

@@ -265,8 +265,8 @@ def plot_metric_vs_steps(graph_data, metric_key, ylabel, title, show=True, save_
     ax.set_title(title)
     ax.grid(True)
     legend_title = f"{params['num_qubits']} Qubits, {params['num_circuits']} Circuits, {params['num_shots']} Shots"
-    ax.legend(title=legend_title, loc='center left', bbox_to_anchor=(1, 0.5))
-    plt.tight_layout(rect=(0, 0, 1, 1))
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), title=legend_title, ncol=2)
+    plt.tight_layout()
 
     if save_path:
         plt.savefig(save_path, bbox_inches='tight')
@@ -329,8 +329,6 @@ def run_simulation(graph_key='graph1_2', params=None, compute=True, load_if_exis
     elif load_if_exists:
         print(f"Loading data for {graph_key}...")
         graph_data = load_graph_data(filename)
-
-    all_data = {graph_key: graph_data}
 
     # Generate plots based on flags
     plot_paths = {}
