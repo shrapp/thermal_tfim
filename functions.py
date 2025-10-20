@@ -818,9 +818,9 @@ def pyplot_settings():
         'grid.color': 'gray',  # Set grid line color
         'axes.grid.which': 'both',  # Enable both major and minor gridlines
         'axes.grid.axis': 'both',  # Apply grid to both x and y axes
-        'axes.labelsize': 22,  # Font size for axis labels
-        'xtick.labelsize': 13,  # Font size for x-axis tick labels
-        'ytick.labelsize': 13  # Font size for y-axis tick labels
+        'axes.labelsize': 18,  # Font size for axis labels
+        'xtick.labelsize': 18,  # Font size for x-axis tick labels
+        'ytick.labelsize': 18  # Font size for y-axis tick labels
     })
 
     

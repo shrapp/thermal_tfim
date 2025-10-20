@@ -98,31 +98,31 @@ def plot_fano_momentum(results, params, show=True, save_path=None):
         ax.plot(x, fano_m, 'o-', label=f'Momentum, $\\sigma={n}$', zorder=2)
 
     # Add constant dashed line at y=2 - sqrt(2)
-    ax.axhline(2 - 2 ** 0.5, color='black', linestyle='--', linewidth=1,
-               label='Theoretical Saturation Value $2 - \sqrt{2}$')
+    ax.axhline(2 - 2 ** 0.5, color='gray', linestyle='--', linewidth=1)
     ax.axhline(0.5, color='gray', linestyle='--', linewidth=1)
     ax.axhline(1, color='gray', linestyle='--', linewidth=1)
     ax.axhline(2, color='gray', linestyle='--', linewidth=1)
 
     ax.set_xlabel('Steps')  # Removed \textbf
     ax.set_ylabel('Fano Factor')  # Removed \textbf
-    ax.set_title('Fano Factor vs. Steps')  # Removed \textbf
     ax.grid(True)
     ax.set_xscale('symlog', linthresh=5)
     ax.set_xlim(left=-0.05, right=max(x) * 1.25)
     ax.set_ylim(bottom=0.45, top=2.05)
     # Added explicit y-ticks including 0.5 for emphasis on initial Fano value
-    ax.set_yticks([0.5,0.75, 1, 1.25, 1.5, 1.75, 2])
+    ax.set_yticks([0.5,(2-(2**0.5)), 1, 1.5, 2])
     # Added explicit x-ticks at [0, 10^1, 10^2, 10^3, 10^4] with LaTeX labels for powers of 10
     ax.set_xticks([0, 1, 10, 100, 1000, 10000])
     ax.set_xticklabels(['0', '$10^{0}$', '$10^{1}$', '$10^{2}$', '$10^{3}$', '$10^{4}$'])
-    legend_title = f"Qubits={params['num_qubits']}, {params['num_circuits']} Circuits"
-    ax.legend(title=legend_title)
+
+    # Custom legend without title (moved to filename)
+    ax.legend()
 
     plt.tight_layout(rect=(0, 0, 1, 1))
 
     if save_path:
-        plt.savefig(save_path, bbox_inches='tight')
+        # Save as high-res JPG for thesis inclusion
+        plt.savefig(save_path, format='jpg', dpi=300, bbox_inches='tight')
     if show:
         plt.show()
 
@@ -143,7 +143,7 @@ def run_fano_momentum(params=None, compute=True, load_if_exists=True,
     if params is None:
         params = {
             'num_qubits'  : 100,
-            'noise_params': [0.0, 0.2, 0.6],
+            'noise_params': [0.0, 0.02, 0.2],
             'num_circuits': 100,
             # Added 0 explicitly to steps_list for initial state
             'steps_list'  : np.concatenate(([0], np.logspace(0, 4, 20, dtype=int))),  # 0 + 1 to 10000 steps
@@ -163,7 +163,11 @@ def run_fano_momentum(params=None, compute=True, load_if_exists=True,
     # Generate plot if enabled
     plot_path = None
     if enable_plot:
-        plot_path = f"fano_vs_steps_momentum.svg" if save_plot else None
+        if save_plot:
+            param_suffix = f"{params['num_qubits']}Q-{params['num_circuits']}C"
+            plot_path = f"thesis/fano_vs_steps_momentum_{param_suffix}.jpg"
+        else:
+            plot_path = None
         plot_fano_momentum(results, params, show=show_plot, save_path=plot_path)
 
     if save_plot:
@@ -173,8 +177,8 @@ def run_fano_momentum(params=None, compute=True, load_if_exists=True,
 if __name__ == "__main__":
     # Example usage: Compute and plot, or customize
     run_fano_momentum(
-            compute=False,  # Set False to skip computation
+            compute=True,  # Set False to skip computation
             enable_plot=True,
-            save_plot=True,  # Set True to save
+            save_plot=False,  # Set True to save
             show_plot=True
             )

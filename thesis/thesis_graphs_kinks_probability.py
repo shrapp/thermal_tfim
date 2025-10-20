@@ -102,7 +102,7 @@ def load_kink_distributions(filename):
 
 
 def plot_kink_distributions(data, show=True, save_path=None, colors=None, labels=None):
-    """Plots bar chart of kink distributions for all scenarios."""
+    """Plots bar chart of kink distributions for all scenarios, split into no-noise and noisy subplots."""
     if not data:
         return
     results, params, scenarios = data['results'], data['params'], data['scenarios']
@@ -111,23 +111,48 @@ def plot_kink_distributions(data, show=True, save_path=None, colors=None, labels
     if labels is None:
         labels = [f"{steps} steps, {noise_param} noise" for steps, noise_param in scenarios]
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, axs = plt.subplots(1, 2, figsize=(20, 6))
     num_qubits = params['num_qubits']
-    kinks_vals = params['kinks_vals']
+    zero_idx = next(idx for idx in sorted(results) if scenarios[idx][0] == 0)
 
-    for idx in sorted(results.keys()):
+    # No-noise plot (left)
+    no_noise_indices = sorted([idx for idx in sorted(results) if scenarios[idx][1] == 0.0],
+                              key=lambda idx: scenarios[idx][0])
+    for i, idx in enumerate(no_noise_indices):
         distribution = results[idx]
         x_pos = np.array([k / num_qubits for k in distribution.keys()])
         y_vals = np.array(list(distribution.values()))
-        ax.bar(x_pos, y_vals, width=0.02, label=labels[idx], color=colors[idx], alpha=0.7)
-
-    ax.set_xlabel('Kinks / $N$')  # Removed \textbf
-    ax.set_ylabel(r'Probability')  # Already plain; kept for consistency
-    ax.set_title(r'Kink Distributions for Varying Steps and Noise')  # Removed \textbf
-    ax.set_xlim(0, 0.7)  # Limit x-axis to 0–0.8 for focus
+        axs[0].bar(x_pos, y_vals, width=0.02, label=labels[idx], color=colors[i], alpha=0.7)
+        # Add dashed line overlay with the same color
+        axs[0].plot(x_pos, y_vals, color=colors[i], linestyle='--', linewidth=1.5)
+    axs[0].set_title('No Noise')
+    axs[0].set_xlabel('Kinks / $N$')
+    axs[0].set_ylabel(r'Probability')
+    axs[0].set_xlim(0, 0.65)
     legend_title = f"{params['num_qubits']} Qubits, {params['num_circuits']} Circuits"
-    ax.legend(title=legend_title)
-    ax.grid(True, alpha=0.3)
+    axs[0].legend(title=legend_title)
+    axs[0].grid(True, alpha=0.3)
+
+    # Noisy plot (right), including zero steps as baseline
+    noisy_indices = [zero_idx] + sorted([idx for idx in sorted(results) if scenarios[idx][1] > 0],
+                                        key=lambda idx: scenarios[idx][0])
+    num_noisy = len(noisy_indices)
+    colors_noisy = colors[:num_noisy]
+    for i, idx in enumerate(noisy_indices):
+        distribution = results[idx]
+        x_pos = np.array([k / num_qubits for k in distribution.keys()])
+        y_vals = np.array(list(distribution.values()))
+        axs[1].bar(x_pos, y_vals, width=0.02, label=labels[idx], color=colors_noisy[i], alpha=0.7)
+        # Add dashed line overlay with the same color
+        axs[1].plot(x_pos, y_vals, color=colors_noisy[i], linestyle='--', linewidth=1.5)
+    axs[1].set_title('With Noise')
+    axs[1].set_xlabel('Kinks / $N$')
+    axs[1].set_ylabel(r'Probability')
+    axs[1].set_xlim(0.25, 0.75)
+    axs[1].legend(title=legend_title)
+    axs[1].grid(True, alpha=0.3)
+
+    fig.suptitle(r'Kink Distributions for Varying Steps and Noise')
     plt.tight_layout()
 
     if save_path:
@@ -153,20 +178,22 @@ def run_kink_distributions(params=None, scenarios=None, compute=True, load_if_ex
         colors, labels: Lists for customizing plot aesthetics.
     """
     if params is None:
+        num_qubits = 100
+        num_circuits = 100
         params = {
-            'num_qubits'  : 100,
-            'num_circuits': 100,
-            'ks'          : k_f(100),  # Precompute ks
-            'kinks_vals'  : np.arange(0, 101, 2)  # Even kinks for periodic chain
+            'num_qubits'  : num_qubits,
+            'num_circuits': num_circuits,
+            'ks'          : k_f(num_qubits),  # Precompute ks
+            'kinks_vals'  : np.arange(0, num_qubits + 1, 2)  # Even kinks for periodic chain
             }
 
     if scenarios is None:
         scenarios = [
             (0, 0.0),  # Initial state, no noise
-            (150, 0.0),  # 200 steps, no noise
-            (300, 0.6),  # 200 steps, 0.6 noise
-            (3, 0.0),  # 5 steps, no noise
-            (10, 0.3)  # 5 steps, 0.6 noise
+            (2, 0.0),  # 3 steps, no noise
+            (300, 0.0),  # 150 steps, no noise
+            (2, 0.8),  # 10 steps, 0.3 noise
+            (300, 0.8)  # 1000 steps, 0.1 noise
             ]
 
     filename = DATA_FILENAMES['kink_distributions']
@@ -194,6 +221,6 @@ if __name__ == "__main__":
     run_kink_distributions(
             compute=False,  # Set False to skip computation
             enable_plot=True,
-            save_plot=True,  # Set True to save
+            save_plot=False,  # Set True to save
             show_plot=True
             )

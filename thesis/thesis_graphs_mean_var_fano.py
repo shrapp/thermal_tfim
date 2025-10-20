@@ -129,7 +129,7 @@ def compute_steps_data(steps, noise_param, params, is_last_noise):
 
         result.update({
             'qiskit_mean_kinks_r_mean_local'   : final_mean_kinks_local,
-            'qiskit_mean_kinks_r_std_err_local' : std_err_mean_kinks_local,
+            'qiskit_mean_kinks_r_std_err_local': std_err_mean_kinks_local,
             'qiskit_var_kinks_r_mean_local'    : final_var_kinks_local,
             'qiskit_var_kinks_r_std_err_local' : std_err_var_kinks_local,
             'final_fano_mean_local'            : final_fano_local,
@@ -183,7 +183,7 @@ def calculate_graph_data(params, filename, compute=True):
 def load_graph_data(filename):
     """Loads existing data for a graph."""
     try:
-        with open(filename, 'rb') as f:
+        with open('thesis/' + filename, 'rb') as f:
             return pickle.load(f)
     except (FileNotFoundError, EOFError):
         print(f"Could not load data from {filename}.")
@@ -197,8 +197,6 @@ def plot_metric_vs_steps(graph_data, metric_key, ylabel, title, show=True, save_
     Args:
         graph_data: Dict with 'results' and 'params'.
         metric_key: String like 'mean_kinks' to select extraction lambdas.
-        ylabel: Y-axis label (e.g., r'\textbf{Mean Kinks / N}').
-        title: Plot title (e.g., r'\textbf{Normalized Mean Kinks vs. Steps}').
         show, save_path: As in original functions.
     """
     if not graph_data:
@@ -217,28 +215,33 @@ def plot_metric_vs_steps(graph_data, metric_key, ylabel, title, show=True, save_
         momentum_val = lambda n, i: results[n][i]['mean_independent_modes']
         q_local_mean = lambda n, i: results[n][i]['qiskit_mean_kinks_r_mean_local']
         q_local_std = lambda n, i: results[n][i]['qiskit_mean_kinks_r_std_err_local']
-        marker_global, marker_local = 'o', 's'
+        marker_global, marker_local = 'o', 'o'
     elif metric_key == 'variance':
         q_global_mean = lambda n, i: results[n][i]['qiskit_var_kinks_r_mean']
         q_global_std = lambda n, i: results[n][i]['qiskit_var_kinks_r_std_err']
         momentum_val = lambda n, i: results[n][i]['var_independent_modes']
         q_local_mean = lambda n, i: results[n][i]['qiskit_var_kinks_r_mean_local']
         q_local_std = lambda n, i: results[n][i]['qiskit_var_kinks_r_std_err_local']
-        marker_global, marker_local = 'o', 's'
+        marker_global, marker_local = 'o', 'o'
     elif metric_key == 'fano':
         q_global_mean = lambda n, i: results[n][i]['final_fano_mean']
         q_global_std = lambda n, i: results[n][i]['final_fano_std_err']
         momentum_val = lambda n, i: results[n][i]['var_independent_modes'] / results[n][i]['mean_independent_modes']
         q_local_mean = lambda n, i: results[n][i]['final_fano_mean_local']
         q_local_std = lambda n, i: results[n][i]['final_fano_std_err_local']
-        marker_global, marker_local = 'o', 's'
+        marker_global, marker_local = 'o', 'o'
     else:
         raise ValueError(f"Unsupported metric_key: {metric_key}")
 
     pyplot_settings()
-    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
     x = np.array(steps_list)
 
+    # Collect handles and labels for controlled legend order
+    handles = []
+    labels = []
+
+    # Plot Qiskit Global and Momentum for each noise level (in loop order)
     for n in noise_params_list:
         color_q = colors_qiskit[n]
         color_m = colors_momentum[n]
@@ -247,53 +250,43 @@ def plot_metric_vs_steps(graph_data, metric_key, ylabel, title, show=True, save_
         q_errs = np.array([q_global_std(n, i) for i in x])
         m_vals = np.array([momentum_val(n, i) for i in x])
         # Plot Qiskit Global first (lower zorder, muted color)
-        ax.errorbar(x, q_vals, yerr=q_errs, fmt=f'{marker_global}-', capsize=3,
-                    label=f'Qiskit Global, $\\sigma={n}$', zorder=1, color=color_q)
-        # Plot Momentum last (higher zorder, contrasting color)
-        ax.plot(x, m_vals, 'x:', label=f'Momentum, $\\sigma={n}$', zorder=3, color=color_m)
+        h_global = ax.errorbar(x, q_vals, yerr=q_errs, fmt=f'{marker_global}-', capsize=3,
+                               zorder=1, color=color_q, label=f'Qiskit Global, $\\sigma={n}$')
+        handles.append(h_global)
+        labels.append(f'Qiskit Global, $\\sigma={n}$')
+        # Plot Momentum last in loop (higher zorder, contrasting color)
+        h_mom, = ax.plot(x, m_vals, 'x:', zorder=3, color=color_m, label=f'Momentum, $\\sigma={n}$')
+        handles.append(h_mom)
+        labels.append(f'Momentum, $\\sigma={n}$')
 
     # Local noise (reuse Qiskit color, dashed for distinction, medium zorder)
+    # Plot it here, but *do not* append to handles/labels yet—add last for legend
     n = noise_params_list[-1]
     color_local = colors_qiskit[n]
     q_local_vals = np.array([q_local_mean(n, i) for i in x])
     q_local_errs = np.array([q_local_std(n, i) for i in x])
-    ax.errorbar(x, q_local_vals, yerr=q_local_errs, fmt=f'{marker_local}--', capsize=3,
-                label=f'Qiskit Local, $\\sigma={n}$', zorder=2, color=color_local)
+    h_local, = ax.plot(x, q_local_vals, f'{marker_local}--',
+                       zorder=2, color=color_local, label=f'Qiskit Local, $\\sigma={n}$', fillstyle='none')
 
-    ax.set_xlabel(r'\textbf{Steps}')
+    # Now append Local last to ensure it appears last in legend
+    handles.append(h_local)
+    labels.append(f'Qiskit Local, $\\sigma={n}$')
+
+    ax.set_xlabel('Steps')
     ax.set_ylabel(ylabel)
-    ax.set_title(title)
+    # ax.set_title(title)
     ax.grid(True)
-    legend_title = f"{params['num_qubits']} Qubits, {params['num_circuits']} Circuits, {params['num_shots']} Shots"
-    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), title=legend_title, ncol=2)
+
+    # Custom legend with controlled order (Local last), but no title displayed
+    ax.legend(handles, labels, loc='center left', bbox_to_anchor=(1, 0.5))
+
     plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, bbox_inches='tight')
+        # Save as high-res JPG for thesis inclusion
+        plt.savefig(save_path, format='jpg', dpi=300, bbox_inches='tight')
     if show:
         plt.show()
-
-
-# Wrapper functions for backward compatibility (call the helper)
-def plot_mean_kinks(graph_data, show=True, save_path=None):
-    plot_metric_vs_steps(graph_data, 'mean_kinks',
-                         r'\textbf{Mean Kinks / N}',
-                         r'\textbf{Normalized Mean Kinks vs. Steps}',
-                         show=show, save_path=save_path)
-
-
-def plot_variance(graph_data, show=True, save_path=None):
-    plot_metric_vs_steps(graph_data, 'variance',
-                         r'\textbf{Variance / N}',
-                         r'\textbf{Normalized Kink Variance vs. Steps}',
-                         show=show, save_path=save_path)
-
-
-def plot_fano_factor(graph_data, show=True, save_path=None):
-    plot_metric_vs_steps(graph_data, 'fano',
-                         r'\textbf{Fano Factor}',
-                         r'\textbf{Fano Factor vs. Steps}',
-                         show=show, save_path=save_path)
 
 
 def run_simulation(graph_key='graph1_2', params=None, compute=True, load_if_exists=True,
@@ -330,23 +323,54 @@ def run_simulation(graph_key='graph1_2', params=None, compute=True, load_if_exis
         print(f"Loading data for {graph_key}...")
         graph_data = load_graph_data(filename)
 
+    # Helper to build param-suffixed filename in thesis/ subdir
+    def _build_save_path(base_name):
+        if not save_plots:
+            return None
+        param_suffix = f"{params['num_qubits']}Q-{params['num_circuits']}C-{params['num_shots']}S"
+        return f"thesis/{base_name}_{param_suffix}.jpg"
+
     # Generate plots based on flags
     plot_paths = {}
     if enable_mean_plot:
-        path = f"mean_kinks_vs_steps.svg" if save_plots else None
+        path = _build_save_path("mean_kinks_vs_steps")
         plot_mean_kinks(graph_data, show=show_plots, save_path=path)
         plot_paths['mean'] = path
     if enable_variance_plot:
-        path = f"variance_kinks_vs_steps.svg" if save_plots else None
+        path = _build_save_path("variance_kinks_vs_steps")
         plot_variance(graph_data, show=show_plots, save_path=path)
         plot_paths['variance'] = path
     if enable_fano_plot:
-        path = f"fano_factor_vs_steps.svg" if save_plots else None
+        path = _build_save_path("fano_factor_vs_steps")
         plot_fano_factor(graph_data, show=show_plots, save_path=path)
         plot_paths['fano'] = path
 
     if save_plots:
         print(f"Plots saved: {plot_paths}")
+
+
+# Wrapper functions for backward compatibility (call the helper)
+def plot_mean_kinks(graph_data, show=True, save_path=None):
+    plot_metric_vs_steps(graph_data, 'mean_kinks',
+                         'Mean Kinks / N',
+                         'Normalized Mean Kinks vs. Steps',
+                         show=show, save_path=save_path)
+
+
+def plot_variance(graph_data, show=True, save_path=None):
+    plot_metric_vs_steps(graph_data, 'variance',
+                         'Variance / N',
+                         'Normalized Kink Variance vs. Steps',
+                         show=show, save_path=save_path)
+
+
+def plot_fano_factor(graph_data, show=True, save_path=None):
+    plot_metric_vs_steps(graph_data, 'fano',
+                         'Fano Factor',
+                         'Fano Factor vs. Steps',
+                         show=show, save_path=save_path)
+
+
 
 
 if __name__ == "__main__":
