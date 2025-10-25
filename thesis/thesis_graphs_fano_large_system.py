@@ -1,11 +1,10 @@
 import multiprocessing
 import pickle
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from collections import defaultdict
-
-import numpy as np
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import matplotlib
+import numpy as np
 from tqdm import tqdm
 
 matplotlib.use('TkAgg')
@@ -110,13 +109,12 @@ def plot_fano_momentum(results, params, show=True, save_path=None):
     ax.set_xlim(left=-0.05, right=max(x) * 1.25)
     ax.set_ylim(bottom=0.45, top=2.05)
     # Added explicit y-ticks including 0.5 for emphasis on initial Fano value
-    ax.set_yticks([0.5,(2-(2**0.5)), 1, 1.5, 2])
+    ax.set_yticks([0.5, (2 - (2 ** 0.5)), 1, 1.5, 2])
     # Added explicit x-ticks at [0, 10^1, 10^2, 10^3, 10^4] with LaTeX labels for powers of 10
     ax.set_xticks([0, 1, 10, 100, 1000, 10000])
     ax.set_xticklabels(['0', '$10^{0}$', '$10^{1}$', '$10^{2}$', '$10^{3}$', '$10^{4}$'])
 
-    # Custom legend without title (moved to filename)
-    ax.legend()
+    ax.legend(title=f"{params['num_qubits']} Qubits, {params['num_circuits']} Circuits")
 
     plt.tight_layout(rect=(0, 0, 1, 1))
 
@@ -141,44 +139,46 @@ def run_fano_momentum(params=None, compute=True, load_if_exists=True,
         show_plot: If True, display plot via plt.show().
     """
     if params is None:
+        num_qubits = 100
         params = {
-            'num_qubits'  : 100,
+            'num_qubits'  : num_qubits,
             'noise_params': [0.0, 0.02, 0.2],
             'num_circuits': 100,
-            # Added 0 explicitly to steps_list for initial state
-            'steps_list'  : np.concatenate(([0], np.logspace(0, 4, 20, dtype=int))),  # 0 + 1 to 10000 steps
-            'ks'          : k_f(100)  # Precompute
+            # Added 0 explicitly to steps_list for initial state [0 + 1 to 10000 steps]
+            'steps_list'  : [0, 1, 2, 3, 4, 5, 8, 13, 22, 38,
+                             64, 108, 183, 308, 519, 875, 1473, 2481, 4178,
+                             7036, 11849, 19952],
+            'ks'          : k_f(num_qubits)  # Precompute
             }
 
-    filename = DATA_FILENAMES['fano_momentum']
-    results = defaultdict(dict)
+        filename = DATA_FILENAMES['fano_momentum']
+        results = defaultdict(dict)
 
-    if compute:
-        print("Computing Fano momentum data...")
-        results = calculate_fano_momentum(params, filename, compute=True)
-    elif load_if_exists:
-        print("Loading Fano momentum data...")
-        results, params = load_fano_momentum(filename)
+        if compute:
+            print("Computing Fano momentum data...")
+            results = calculate_fano_momentum(params, filename, compute=True)
+        elif load_if_exists:
+            print("Loading Fano momentum data...")
+            results, params = load_fano_momentum(filename)
 
-    # Generate plot if enabled
-    plot_path = None
-    if enable_plot:
+        # Generate plot if enabled
+        plot_path = None
+        if enable_plot:
+            if save_plot:
+                param_suffix = f"{params['num_qubits']}Q-{params['num_circuits']}C"
+                plot_path = f"fano_vs_steps_momentum_{param_suffix}.jpg"
+            else:
+                plot_path = None
+            plot_fano_momentum(results, params, show=show_plot, save_path=plot_path)
+
         if save_plot:
-            param_suffix = f"{params['num_qubits']}Q-{params['num_circuits']}C"
-            plot_path = f"thesis/fano_vs_steps_momentum_{param_suffix}.jpg"
-        else:
-            plot_path = None
-        plot_fano_momentum(results, params, show=show_plot, save_path=plot_path)
-
-    if save_plot:
-        print(f"Plot saved: {plot_path}")
-
+            print(f"Plot saved: {plot_path}")
 
 if __name__ == "__main__":
     # Example usage: Compute and plot, or customize
     run_fano_momentum(
-            compute=True,  # Set False to skip computation
+            compute=False,  # Set False to skip computation
             enable_plot=True,
-            save_plot=False,  # Set True to save
+            save_plot=True,  # Set True to save
             show_plot=True
             )
