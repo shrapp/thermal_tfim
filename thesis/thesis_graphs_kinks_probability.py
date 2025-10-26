@@ -111,7 +111,7 @@ def plot_kink_distributions(data, show=True, save_path=None, colors=None, labels
     if labels is None:
         labels = [f"{steps} steps, {noise_param} noise" for steps, noise_param in scenarios]
 
-    fig, axs = plt.subplots(1, 2, figsize=(20, 6))
+    fig, axs = plt.subplots(1, 2, figsize=(16, 6))
     num_qubits = params['num_qubits']
     zero_idx = next(idx for idx in sorted(results) if scenarios[idx][0] == 0)
 
@@ -125,9 +125,9 @@ def plot_kink_distributions(data, show=True, save_path=None, colors=None, labels
         axs[0].bar(x_pos, y_vals, width=0.02, label=labels[idx], color=colors[i], alpha=0.7)
         # Add dashed line overlay with the same color
         axs[0].plot(x_pos, y_vals, color=colors[i], linestyle='--', linewidth=1.5)
-    axs[0].set_title('No Noise')
+    # axs[0].set_title('No Noise')
     axs[0].set_xlabel('Kinks / $N$')
-    axs[0].set_ylabel(r'Probability')
+    axs[0].set_ylabel('Probability')
     axs[0].set_xlim(0, 0.65)
     legend_title = f"{params['num_qubits']} Qubits, {params['num_circuits']} Circuits"
     axs[0].legend(title=legend_title)
@@ -145,14 +145,16 @@ def plot_kink_distributions(data, show=True, save_path=None, colors=None, labels
         axs[1].bar(x_pos, y_vals, width=0.02, label=labels[idx], color=colors_noisy[i], alpha=0.7)
         # Add dashed line overlay with the same color
         axs[1].plot(x_pos, y_vals, color=colors_noisy[i], linestyle='--', linewidth=1.5)
-    axs[1].set_title('With Noise')
     axs[1].set_xlabel('Kinks / $N$')
-    axs[1].set_ylabel(r'Probability')
+    axs[1].set_ylabel('Probability')
     axs[1].set_xlim(0.25, 0.75)
     axs[1].legend(title=legend_title)
     axs[1].grid(True, alpha=0.3)
 
-    fig.suptitle(r'Kink Distributions for Varying Steps and Noise')
+    # Shared, centered axis labels (adjusted y-position for tick clearance)
+    # fig.text(0.5, 0, 'Kinks / $N$', ha='center', va='top')
+    # fig.text(0.04, 0.5, r'Probability', ha='center', va='center', rotation='vertical')
+
     plt.tight_layout()
 
     if save_path:
@@ -207,7 +209,7 @@ def run_kink_distributions(params=None, scenarios=None, compute=True, load_if_ex
     # Generate plot if enabled
     plot_path = None
     if enable_plot:
-        plot_path = f"kink_distributions.svg" if save_plot else None
+        plot_path = f"kink_distributions.jpg" if save_plot else None
         plot_kink_distributions(data, show=show_plot, save_path=plot_path,
                                 colors=colors, labels=labels)
 
@@ -221,6 +223,6 @@ if __name__ == "__main__":
     run_kink_distributions(
             compute=False,  # Set False to skip computation
             enable_plot=True,
-            save_plot=False,  # Set True to save
+            save_plot=True,  # Set True to save
             show_plot=True
             )
