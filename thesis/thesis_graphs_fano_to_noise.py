@@ -198,9 +198,8 @@ def plot_graph3(graph_data, show=True, save_path=None):
     ax.axhline(0.5, color='gray', linestyle='--', linewidth=1)
     ax.axhline(2.0, color='gray', linestyle='--', linewidth=1)
 
-    ax.set_xlabel(r'\textbf{Noise Parameter} ($\sigma$)')
-    ax.set_ylabel(r'\textbf{Variance / Mean}')
-    ax.set_title(r'\textbf{Kink Statistics Ratio vs. Noise}')
+    ax.set_xlabel('Noise Parameter')
+    ax.set_ylabel('Fano factor')
     ax.grid(True)
     legend_title = f"{params['num_circuits']} Circuits, {params['steps']} Steps\n {params['num_shots']} Shots"
     ax.legend(title=legend_title)
@@ -248,7 +247,7 @@ def run_graph3(params=None, compute=True, load_if_exists=True,
     # Generate plot if enabled
     plot_path = None
     if enable_plot:
-        plot_path = f"ratio_vs_noise.svg" if save_plot else None
+        plot_path = f"ratio_vs_noise.jpg" if save_plot else None
         plot_graph3(graph_data, show=show_plot, save_path=plot_path)
 
     if save_plot:
@@ -258,7 +257,7 @@ def run_graph3(params=None, compute=True, load_if_exists=True,
 if __name__ == "__main__":
     # Example usage: Compute and plot, or customize
     run_graph3(
-            compute=True,  # Set False to skip computation
+            compute=False,  # Set False to skip computation
             enable_plot=True,
             save_plot=True,  # Set True to save
             show_plot=True
