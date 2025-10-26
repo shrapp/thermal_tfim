@@ -101,7 +101,7 @@ def load_kink_distributions(filename):
         return {}
 
 
-def plot_kink_distributions(data, show=True, save_path=None, colors=None, labels=None):
+def plot_kink_distributions(data, show=True, base_save_path=None, colors=None, labels=None):
     """Plots bar chart of kink distributions for all scenarios, split into no-noise and noisy subplots."""
     if not data:
         return
@@ -111,29 +111,38 @@ def plot_kink_distributions(data, show=True, save_path=None, colors=None, labels
     if labels is None:
         labels = [f"{steps} steps, {noise_param} noise" for steps, noise_param in scenarios]
 
-    fig, axs = plt.subplots(1, 2, figsize=(16, 6))
+    # No-noise plot
+    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
     num_qubits = params['num_qubits']
     zero_idx = next(idx for idx in sorted(results) if scenarios[idx][0] == 0)
 
-    # No-noise plot (left)
     no_noise_indices = sorted([idx for idx in sorted(results) if scenarios[idx][1] == 0.0],
                               key=lambda idx: scenarios[idx][0])
     for i, idx in enumerate(no_noise_indices):
         distribution = results[idx]
         x_pos = np.array([k / num_qubits for k in distribution.keys()])
         y_vals = np.array(list(distribution.values()))
-        axs[0].bar(x_pos, y_vals, width=0.02, label=labels[idx], color=colors[i], alpha=0.7)
+        ax.bar(x_pos, y_vals, width=0.02, label=labels[idx], color=colors[i], alpha=0.7)
         # Add dashed line overlay with the same color
-        axs[0].plot(x_pos, y_vals, color=colors[i], linestyle='--', linewidth=1.5)
-    # axs[0].set_title('No Noise')
-    axs[0].set_xlabel('Kinks / $N$')
-    axs[0].set_ylabel('Probability')
-    axs[0].set_xlim(0, 0.65)
+        ax.plot(x_pos, y_vals, color=colors[i], linestyle='--', linewidth=1.5)
+    # ax.set_title('No Noise')
+    ax.set_xlabel('Kinks / $N$')
+    ax.set_ylabel('Probability')
+    ax.set_xlim(0, 0.65)
     legend_title = f"{params['num_qubits']} Qubits, {params['num_circuits']} Circuits"
-    axs[0].legend(title=legend_title)
-    axs[0].grid(True, alpha=0.3)
+    ax.legend(title=legend_title)
+    ax.grid(True, alpha=0.3)
 
-    # Noisy plot (right), including zero steps as baseline
+    plt.tight_layout()
+
+    if base_save_path:
+        no_noise_path = f"{base_save_path}_no_noise.jpg"
+        plt.savefig(no_noise_path, bbox_inches='tight')
+    if show:
+        plt.show()
+
+    # Noisy plot, including zero steps as baseline
+    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
     noisy_indices = [zero_idx] + sorted([idx for idx in sorted(results) if scenarios[idx][1] > 0],
                                         key=lambda idx: scenarios[idx][0])
     num_noisy = len(noisy_indices)
@@ -142,14 +151,14 @@ def plot_kink_distributions(data, show=True, save_path=None, colors=None, labels
         distribution = results[idx]
         x_pos = np.array([k / num_qubits for k in distribution.keys()])
         y_vals = np.array(list(distribution.values()))
-        axs[1].bar(x_pos, y_vals, width=0.02, label=labels[idx], color=colors_noisy[i], alpha=0.7)
+        ax.bar(x_pos, y_vals, width=0.02, label=labels[idx], color=colors_noisy[i], alpha=0.7)
         # Add dashed line overlay with the same color
-        axs[1].plot(x_pos, y_vals, color=colors_noisy[i], linestyle='--', linewidth=1.5)
-    axs[1].set_xlabel('Kinks / $N$')
-    axs[1].set_ylabel('Probability')
-    axs[1].set_xlim(0.25, 0.75)
-    axs[1].legend(title=legend_title)
-    axs[1].grid(True, alpha=0.3)
+        ax.plot(x_pos, y_vals, color=colors_noisy[i], linestyle='--', linewidth=1.5)
+    ax.set_xlabel('Kinks / $N$')
+    ax.set_ylabel('Probability')
+    ax.set_xlim(0.25, 0.75)
+    ax.legend(title=legend_title)
+    ax.grid(True, alpha=0.3)
 
     # Shared, centered axis labels (adjusted y-position for tick clearance)
     # fig.text(0.5, 0, 'Kinks / $N$', ha='center', va='top')
@@ -157,8 +166,9 @@ def plot_kink_distributions(data, show=True, save_path=None, colors=None, labels
 
     plt.tight_layout()
 
-    if save_path:
-        plt.savefig(save_path, bbox_inches='tight')
+    if base_save_path:
+        noisy_path = f"{base_save_path}_noisy.jpg"
+        plt.savefig(noisy_path, bbox_inches='tight')
     if show:
         plt.show()
 
@@ -207,22 +217,23 @@ def run_kink_distributions(params=None, scenarios=None, compute=True, load_if_ex
         data = load_kink_distributions(filename)
 
     # Generate plot if enabled
-    plot_path = None
+    base_plot_path = None
     if enable_plot:
-        plot_path = f"kink_distributions.jpg" if save_plot else None
-        plot_kink_distributions(data, show=show_plot, save_path=plot_path,
+        if save_plot:
+            base_plot_path = "kink_distributions"
+        plot_kink_distributions(data, show=show_plot, base_save_path=base_plot_path,
                                 colors=colors, labels=labels)
 
     if save_plot:
-        print(f"Plot saved: {plot_path}")
+        print(f"Plots saved: kink_distributions_no_noise.jpg and kink_distributions_noisy.jpg")
 
 
 if __name__ == "__main__":
     pyplot_settings()
     # Example usage: Compute and plot, or customize
     run_kink_distributions(
-            compute=False,  # Set False to skip computation
+            compute=False,
             enable_plot=True,
-            save_plot=True,  # Set True to save
+            save_plot=True,
             show_plot=True
             )
