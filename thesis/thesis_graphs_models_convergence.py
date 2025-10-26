@@ -143,14 +143,14 @@ def plot_graph4(results, params, show=True, save_path=None):
         ax.errorbar(x, y_mean, yerr=y_std, fmt='o-', capsize=3, label=f'$\\sigma={noise_param}$')
 
     ax.set_xscale('log')
-    ax.set_xlabel(r'Number of Circuits')  # Removed \textbf
-    ax.set_ylabel(r'Abs. Difference in Ratio')  # Removed \textbf
-    ax.set_title(r'Model Discrepancy vs. Circuit Count')  # Removed \textbf
+    ax.set_xlabel('Number of Circuits')  # Removed \textbf
+    ax.set_ylabel('Abs. Difference in Fano factor')  # Removed \textbf
+    # ax.set_title(r'Model Discrepancy vs. Circuit Count')  # Removed \textbf
     ax.grid(True)
     legend_title = f"{params['num_qubits']} Qubits, {params['steps']} Steps, {params['num_shots']} Shots"
     ax.legend(title=legend_title)
 
-    plt.tight_layout(rect=[0, 0, 0.85, 1])
+    # plt.tight_layout(rect=[0, 0, 0.85, 1])
 
     if save_path:
         plt.savefig(save_path, bbox_inches='tight')
@@ -193,7 +193,7 @@ def run_graph4(params=None, compute=True, load_if_exists=True,
     # Generate plot if enabled
     plot_path = None
     if enable_plot:
-        plot_path = f"diff_vs_circuits.svg" if save_plot else None
+        plot_path = f"diff_vs_circuits.jpg" if save_plot else None
         plot_graph4(results, params, show=show_plot, save_path=plot_path)
 
     if save_plot:
@@ -203,7 +203,7 @@ def run_graph4(params=None, compute=True, load_if_exists=True,
 if __name__ == "__main__":
     # Example usage: Compute and plot, or customize
     run_graph4(
-            compute=True,  # Set False to skip computation
+            compute=False,  # Set False to skip computation
             enable_plot=True,
             save_plot=True,  # Set True to save
             show_plot=True
