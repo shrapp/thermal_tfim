@@ -46,4 +46,4 @@ if __name__ == '__main__':
 
     plt.tight_layout()
     plt.show()
-    plt.savefig("thesis_pk_plot.png", dpi=900)
+    plt.savefig("thesis_pk_plot.jpg", dpi=900)
