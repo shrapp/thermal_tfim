@@ -183,11 +183,11 @@ def calculate_graph_data(params, filename, compute=True):
 def load_graph_data(filename):
     """Loads existing data for a graph."""
     try:
-        with open('thesis/' + filename, 'rb') as f:
+        with open(filename, 'rb') as f:
             return pickle.load(f)
     except (FileNotFoundError, EOFError):
         print(f"Could not load data from {filename}.")
-        return {}
+        exit(1)
 
 
 def plot_metric_vs_steps(graph_data, metric_key, ylabel, title, show=True, save_path=None):
@@ -251,13 +251,13 @@ def plot_metric_vs_steps(graph_data, metric_key, ylabel, title, show=True, save_
         m_vals = np.array([momentum_val(n, i) for i in x])
         # Plot Qiskit Global first (lower zorder, muted color)
         h_global = ax.errorbar(x, q_vals, yerr=q_errs, fmt=f'{marker_global}-', capsize=3,
-                               zorder=1, color=color_q, label=f'Qiskit Global, $\\sigma={n}$')
+                               zorder=1, color=color_q, label=f'$\\sigma={n}$, Qiskit Global')
         handles.append(h_global)
-        labels.append(f'Qiskit Global, $\\sigma={n}$')
+        labels.append(f'$\\sigma={n}$, Qiskit Global')
         # Plot Momentum last in loop (higher zorder, contrasting color)
-        h_mom, = ax.plot(x, m_vals, 'x:', zorder=3, color=color_m, label=f'Momentum, $\\sigma={n}$')
+        h_mom, = ax.plot(x, m_vals, 'x:', zorder=3, color=color_m, label=f'$\\sigma={n}$, Momentum')
         handles.append(h_mom)
-        labels.append(f'Momentum, $\\sigma={n}$')
+        labels.append(f'$\\sigma={n}$, Momentum')
 
     # Local noise (reuse Qiskit color, dashed for distinction, medium zorder)
     # Plot it here, but *do not* append to handles/labels yet—add last for legend
@@ -266,11 +266,11 @@ def plot_metric_vs_steps(graph_data, metric_key, ylabel, title, show=True, save_
     q_local_vals = np.array([q_local_mean(n, i) for i in x])
     q_local_errs = np.array([q_local_std(n, i) for i in x])
     h_local, = ax.plot(x, q_local_vals, f'{marker_local}--',
-                       zorder=2, color=color_local, label=f'Qiskit Local, $\\sigma={n}$', fillstyle='none')
+                       zorder=2, color=color_local, label=f'$\\sigma={n}$, Qiskit Local', fillstyle='none')
 
     # Now append Local last to ensure it appears last in legend
     handles.append(h_local)
-    labels.append(f'Qiskit Local, $\\sigma={n}$')
+    labels.append(f'$\\sigma={n}$, Qiskit Local')
 
     ax.set_xlabel('Steps')
     ax.set_ylabel(ylabel)
@@ -284,7 +284,7 @@ def plot_metric_vs_steps(graph_data, metric_key, ylabel, title, show=True, save_
 
     if save_path:
         # Save as high-res JPG for thesis inclusion
-        plt.savefig(save_path, format='jpg', dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, format='jpg', dpi=1200, bbox_inches='tight')
     if show:
         plt.show()
 
@@ -328,7 +328,7 @@ def run_simulation(graph_key='graph1_2', params=None, compute=True, load_if_exis
         if not save_plots:
             return None
         param_suffix = f"{params['num_qubits']}Q-{params['num_circuits']}C-{params['num_shots']}S"
-        return f"thesis/{base_name}_{param_suffix}.jpg"
+        return f"{base_name}_{param_suffix}.jpg"
 
     # Generate plots based on flags
     plot_paths = {}

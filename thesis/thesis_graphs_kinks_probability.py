@@ -109,7 +109,8 @@ def plot_kink_distributions(data, show=True, base_save_path=None, colors=None, l
     if colors is None:
         colors = ['black', 'blue', 'red', 'green', 'orange']
     if labels is None:
-        labels = [f"{steps} steps, {noise_param} noise" for steps, noise_param in scenarios]
+        # labels = [f"{steps} steps, {noise_param} noise" for steps, noise_param in scenarios]
+        labels = [f"{steps} steps" for steps, noise_param in scenarios]
 
     # No-noise plot
     fig, ax = plt.subplots(1, 1, figsize=(8, 6))
@@ -124,20 +125,21 @@ def plot_kink_distributions(data, show=True, base_save_path=None, colors=None, l
         y_vals = np.array(list(distribution.values()))
         ax.bar(x_pos, y_vals, width=0.02, label=labels[idx], color=colors[i], alpha=0.7)
         # Add dashed line overlay with the same color
-        ax.plot(x_pos, y_vals, color=colors[i], linestyle='--', linewidth=1.5)
+        # ax.plot(x_pos, y_vals, color=colors[i], linestyle='--', linewidth=1.5)
     # ax.set_title('No Noise')
     ax.set_xlabel('Kinks / $N$')
     ax.set_ylabel('Probability')
     ax.set_xlim(0, 0.65)
-    legend_title = f"{params['num_qubits']} Qubits, {params['num_circuits']} Circuits"
-    ax.legend(title=legend_title)
+    # legend_title = f"{params['num_qubits']} Qubits, {params['num_circuits']} Circuits"
+    # ax.legend(title=legend_title)
+    ax.legend()
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
 
     if base_save_path:
         no_noise_path = f"{base_save_path}_no_noise.jpg"
-        plt.savefig(no_noise_path, bbox_inches='tight')
+        plt.savefig(no_noise_path, bbox_inches='tight', dpi=1200)
     if show:
         plt.show()
 
@@ -157,7 +159,8 @@ def plot_kink_distributions(data, show=True, base_save_path=None, colors=None, l
     ax.set_xlabel('Kinks / $N$')
     ax.set_ylabel('Probability')
     ax.set_xlim(0.25, 0.75)
-    ax.legend(title=legend_title)
+    # ax.legend(title=legend_title)
+    ax.legend()
     ax.grid(True, alpha=0.3)
 
     # Shared, centered axis labels (adjusted y-position for tick clearance)
@@ -168,7 +171,7 @@ def plot_kink_distributions(data, show=True, base_save_path=None, colors=None, l
 
     if base_save_path:
         noisy_path = f"{base_save_path}_noisy.jpg"
-        plt.savefig(noisy_path, bbox_inches='tight')
+        plt.savefig(noisy_path, bbox_inches='tight', dpi=1200)
     if show:
         plt.show()
 
