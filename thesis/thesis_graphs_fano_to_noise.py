@@ -65,7 +65,9 @@ def compute_noise_data(noise_param, params):
                 local_circuit.rzz(betas_local[step], i, (i + 1) % num_qubits)
             local_circuit.rx(alphas_local[step], range(num_qubits))
             for q in range(num_qubits):
-                local_circuit.rz(noise_param * np.random.rand(), q)
+                theta = noise_param * np.random.randn()
+                if np.abs(theta) > 1e-14:
+                    local_circuit.rz(theta, q)
         local_circuit.measure(range(num_qubits), range(num_qubits))
         qiskit_circs_local.append(local_circuit)
 
@@ -202,12 +204,14 @@ def plot_graph3(graph_data, show=True, save_path=None):
     ax.set_ylabel('Fano factor')
     ax.grid(True)
     legend_title = f"{params['num_circuits']} Circuits, {params['steps']} Steps\n {params['num_shots']} Shots"
-    ax.legend(title=legend_title)
+    ax.legend(
+          # title=legend_title
+          )
 
     plt.tight_layout(rect=(0, 0, 1, 1))
 
     if save_path:
-        plt.savefig(save_path, bbox_inches='tight')
+        plt.savefig(save_path, bbox_inches='tight', dpi=1200)
     if show:
         plt.show()
 
@@ -247,7 +251,8 @@ def run_graph3(params=None, compute=True, load_if_exists=True,
     # Generate plot if enabled
     plot_path = None
     if enable_plot:
-        plot_path = f"ratio_vs_noise.jpg" if save_plot else None
+        plot_path = (f"ratio_vs_noise_{params['steps']}-steps_{params['num_qubits']}-qubits_{params['num_circuits']}-circuits_{params['num_shots']}-shots.jpg"
+                        if save_plot else None)
         plot_graph3(graph_data, show=show_plot, save_path=plot_path)
 
     if save_plot:

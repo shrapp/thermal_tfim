@@ -1,10 +1,11 @@
 import multiprocessing
 import pickle  # Added for saving/loading
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import as_completed, ProcessPoolExecutor
 
 import matplotlib
 import numpy as np
+import seaborn as sns
 
 matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
@@ -204,9 +205,11 @@ def plot_metric_vs_steps(graph_data, metric_key, ylabel, title, show=True, save_
     results, params = graph_data['results'], graph_data['params']
     steps_list, noise_params_list = params['steps_list'], params['noise_params_list']
 
-    # Color maps: Qiskit (base, muted), Momentum (top, vibrant/contrasting)
-    colors_qiskit = {0.0: 'black', 0.2: '#ff7f00', 0.6: '#1f77b4'}  # black, orange, blue
-    colors_momentum = {0.0: '#d62728', 0.2: '#9467bd', 0.6: '#2ca02c'}  # red, purple, green
+    palette = sns.color_palette("colorblind6", len(noise_params_list))
+    colors_qiskit = [sns.desaturate(c, 0.3) for c in palette]  # dark
+    colors_qiskit = {n: colors_qiskit[i] for i, n in enumerate(noise_params_list)}
+    colors_momentum = [sns.desaturate(c, 0.9) for c in palette]  # very light
+    colors_momentum = {n: colors_momentum[i] for i, n in enumerate(noise_params_list)}
 
     # Metric-specific data extractors (lambdas for flexibility)
     if metric_key == 'mean_kinks':
@@ -371,16 +374,14 @@ def plot_fano_factor(graph_data, show=True, save_path=None):
                          show=show, save_path=save_path)
 
 
-
-
 if __name__ == "__main__":
     # Example usage: Compute and plot all, or customize
     run_simulation(
-            graph_key='graph1_2',
-            compute=False,  # Set False to skip computation
-            enable_mean_plot=True,
-            enable_variance_plot=True,
-            enable_fano_plot=True,
-            save_plots=True,  # Set True to save (add get_dated_plot_path if needed)
-            show_plots=True
-            )
+          graph_key='graph1_2',
+          compute=False,  # Set False to skip computation
+          enable_mean_plot=True,
+          enable_variance_plot=True,
+          enable_fano_plot=True,
+          save_plots=True,  # Set True to save (add get_dated_plot_path if needed)
+          show_plots=True
+          )

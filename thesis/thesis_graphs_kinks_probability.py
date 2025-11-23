@@ -237,6 +237,6 @@ if __name__ == "__main__":
     run_kink_distributions(
             compute=False,
             enable_plot=True,
-            save_plot=True,
+            save_plot=False,
             show_plot=True
             )

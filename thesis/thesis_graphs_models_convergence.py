@@ -148,12 +148,14 @@ def plot_graph4(results, params, show=True, save_path=None):
     # ax.set_title(r'Model Discrepancy vs. Circuit Count')  # Removed \textbf
     ax.grid(True)
     legend_title = f"{params['num_qubits']} Qubits, {params['steps']} Steps, {params['num_shots']} Shots"
-    ax.legend(title=legend_title)
+    ax.legend(
+          # title=legend_title
+          )
 
     # plt.tight_layout(rect=[0, 0, 0.85, 1])
 
     if save_path:
-        plt.savefig(save_path, bbox_inches='tight')
+        plt.savefig(save_path, bbox_inches='tight', dpi=1200)
     if show:
         plt.show()
 
@@ -193,7 +195,7 @@ def run_graph4(params=None, compute=True, load_if_exists=True,
     # Generate plot if enabled
     plot_path = None
     if enable_plot:
-        plot_path = f"diff_vs_circuits.jpg" if save_plot else None
+        plot_path = f"diff_vs_circuits_{params['num_qubits']}q_{params['steps']}s_{params['num_shots']}shots.png" if save_plot else None
         plot_graph4(results, params, show=show_plot, save_path=plot_path)
 
     if save_plot:

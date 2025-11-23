@@ -45,5 +45,5 @@ if __name__ == '__main__':
         ax.grid(True, alpha=0.3)  # Optional: light grid for readability
 
     plt.tight_layout()
-    fig.savefig("thesis_pk_plot.jpg", dpi=300, bbox_inches='tight')  # Save before show; explicit fig handle
+    fig.savefig("thesis_pk_plot.jpg", dpi=1200, bbox_inches='tight')  # Save before show; explicit fig handle
     plt.show()

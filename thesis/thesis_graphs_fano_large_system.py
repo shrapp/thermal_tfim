@@ -114,7 +114,9 @@ def plot_fano_momentum(results, params, show=True, save_path=None):
     ax.set_xticks([0, 1, 10, 100, 1000, 10000])
     ax.set_xticklabels(['0', '$10^{0}$', '$10^{1}$', '$10^{2}$', '$10^{3}$', '$10^{4}$'])
 
-    ax.legend(title=f"{params['num_qubits']} Qubits, {params['num_circuits']} Circuits")
+    ax.legend(
+          # title=f"{params['num_qubits']} Qubits, {params['num_circuits']} Circuits"
+          )
 
     plt.tight_layout(rect=(0, 0, 1, 1))
 
