@@ -195,7 +195,7 @@ def run_graph4(params=None, compute=True, load_if_exists=True,
     # Generate plot if enabled
     plot_path = None
     if enable_plot:
-        plot_path = f"diff_vs_circuits_{params['num_qubits']}q_{params['steps']}s_{params['num_shots']}shots.png" if save_plot else None
+        plot_path = f"diff_vs_circuits_{params['num_qubits']}q_{params['steps']}s_{params['num_shots']}shots.jpg" if save_plot else None
         plot_graph4(results, params, show=show_plot, save_path=plot_path)
 
     if save_plot:
@@ -208,5 +208,5 @@ if __name__ == "__main__":
             compute=False,  # Set False to skip computation
             enable_plot=True,
             save_plot=True,  # Set True to save
-            show_plot=True
+            show_plot=False
             )
