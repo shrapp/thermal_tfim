@@ -253,10 +253,13 @@ def plot_metric_vs_steps(graph_data, metric_key, ylabel, title, show=True, save_
         q_errs = np.array([q_global_std(n, i) for i in x])
         m_vals = np.array([momentum_val(n, i) for i in x])
         # Plot Qiskit Global first (lower zorder, muted color)
+        label = f'$\\sigma={n}$, Qiskit Global'
+        if n == 0.0:
+            label = f'$\\sigma={n}$, Qiskit Noiseless'
         h_global = ax.errorbar(x, q_vals, yerr=q_errs, fmt=f'{marker_global}-', capsize=3,
-                               zorder=1, color=color_q, label=f'$\\sigma={n}$, Qiskit Global')
+                               zorder=1, color=color_q, label=label)
         handles.append(h_global)
-        labels.append(f'$\\sigma={n}$, Qiskit Global')
+        labels.append(label)
         # Plot Momentum last in loop (higher zorder, contrasting color)
         h_mom, = ax.plot(x, m_vals, 'x:', zorder=3, color=color_m, label=f'$\\sigma={n}$, Momentum')
         handles.append(h_mom)
@@ -287,7 +290,7 @@ def plot_metric_vs_steps(graph_data, metric_key, ylabel, title, show=True, save_
 
     if save_path:
         # Save as high-res JPG for thesis inclusion
-        plt.savefig(save_path, format='jpg', dpi=1200, bbox_inches='tight')
+        plt.savefig(save_path, format='pdf', dpi=2400, bbox_inches='tight')
     if show:
         plt.show()
 
@@ -331,7 +334,7 @@ def run_simulation(graph_key='graph1_2', params=None, compute=True, load_if_exis
         if not save_plots:
             return None
         param_suffix = f"{params['num_qubits']}Q-{params['num_circuits']}C-{params['num_shots']}S"
-        return f"{base_name}_{param_suffix}.jpg"
+        return f"{base_name}_{param_suffix}.pdf"
 
     # Generate plots based on flags
     plot_paths = {}

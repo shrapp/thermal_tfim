@@ -211,7 +211,7 @@ def plot_graph3(graph_data, show=True, save_path=None):
     plt.tight_layout(rect=(0, 0, 1, 1))
 
     if save_path:
-        plt.savefig(save_path, bbox_inches='tight', dpi=1200)
+        plt.savefig(save_path, bbox_inches='tight', format='pdf', dpi=2400)
     if show:
         plt.show()
 
@@ -251,7 +251,7 @@ def run_graph3(params=None, compute=True, load_if_exists=True,
     # Generate plot if enabled
     plot_path = None
     if enable_plot:
-        plot_path = (f"ratio_vs_noise_{params['steps']}-steps_{params['num_qubits']}-qubits_{params['num_circuits']}-circuits_{params['num_shots']}-shots.jpg"
+        plot_path = (f"ratio_vs_noise_{params['steps']}-steps_{params['num_qubits']}-qubits_{params['num_circuits']}-circuits_{params['num_shots']}-shots.pdf"
                         if save_plot else None)
         plot_graph3(graph_data, show=show_plot, save_path=plot_path)
 

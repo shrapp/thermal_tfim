@@ -122,7 +122,7 @@ def plot_fano_momentum(results, params, show=True, save_path=None):
 
     if save_path:
         # Save as high-res JPG for thesis inclusion
-        plt.savefig(save_path, format='jpg', dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, format='pdf', dpi=300, bbox_inches='tight')
     if show:
         plt.show()
 
@@ -168,7 +168,7 @@ def run_fano_momentum(params=None, compute=True, load_if_exists=True,
         if enable_plot:
             if save_plot:
                 param_suffix = f"{params['num_qubits']}Q-{params['num_circuits']}C"
-                plot_path = f"fano_vs_steps_momentum_{param_suffix}.jpg"
+                plot_path = f"fano_vs_steps_momentum_{param_suffix}.pdf"
             else:
                 plot_path = None
             plot_fano_momentum(results, params, show=show_plot, save_path=plot_path)

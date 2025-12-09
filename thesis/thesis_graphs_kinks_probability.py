@@ -138,8 +138,8 @@ def plot_kink_distributions(data, show=True, base_save_path=None, colors=None, l
     plt.tight_layout()
 
     if base_save_path:
-        no_noise_path = f"{base_save_path}_no_noise.jpg"
-        plt.savefig(no_noise_path, bbox_inches='tight', dpi=1200)
+        no_noise_path = f"{base_save_path}_no_noise.pdf"
+        plt.savefig(no_noise_path, bbox_inches='tight', format='pdf', dpi=2400)
     if show:
         plt.show()
 
@@ -170,8 +170,8 @@ def plot_kink_distributions(data, show=True, base_save_path=None, colors=None, l
     plt.tight_layout()
 
     if base_save_path:
-        noisy_path = f"{base_save_path}_noisy.jpg"
-        plt.savefig(noisy_path, bbox_inches='tight', dpi=1200)
+        noisy_path = f"{base_save_path}_noisy.pdf"
+        plt.savefig(noisy_path, bbox_inches='tight', format='pdf', dpi=2400)
     if show:
         plt.show()
 
@@ -228,7 +228,7 @@ def run_kink_distributions(params=None, scenarios=None, compute=True, load_if_ex
                                 colors=colors, labels=labels)
 
     if save_plot:
-        print(f"Plots saved: kink_distributions_no_noise.jpg and kink_distributions_noisy.jpg")
+        print(f"Plots saved: kink_distributions_no_noise.pdf and kink_distributions_noisy.pdf")
 
 
 if __name__ == "__main__":
@@ -237,6 +237,6 @@ if __name__ == "__main__":
     run_kink_distributions(
             compute=False,
             enable_plot=True,
-            save_plot=False,
+            save_plot=True,
             show_plot=True
             )
