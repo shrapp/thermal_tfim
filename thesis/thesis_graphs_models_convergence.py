@@ -1,11 +1,10 @@
 import multiprocessing
 import pickle
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor, as_completed
-
-import numpy as np
+from concurrent.futures import as_completed, ProcessPoolExecutor
 
 import matplotlib
+import numpy as np
 
 matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
@@ -35,7 +34,10 @@ def compute_circuits_data(num_circuits, noise_param, params):
     ks = k_f(num_qubits)
 
     for _ in range(num_circuits):
-        noisy_base = base_angles + noise_param * np.random.randn(steps, 1)
+        # noisy_base = base_angles + noise_param * np.random.uniform(low=-1.0, high=1.0, size=(steps, 1))
+        # noisy_base = base_angles + noise_param * np.random.randn(steps, 1)
+        noisy_base = base_angles + noise_param * np.random.choice(a=[-1,0.8], size=(steps, 1))
+
         betas, alphas = -np.sin(noisy_base).flatten(), -np.cos(noisy_base).flatten()
         sol = [tfim_momentum_trotter_single_k(k, steps, betas, alphas, 0) for k in ks]
         momentum_dms.append(sol)
@@ -195,7 +197,8 @@ def run_graph4(params=None, compute=True, load_if_exists=True,
     # Generate plot if enabled
     plot_path = None
     if enable_plot:
-        plot_path = f"diff_vs_circuits_{params['num_qubits']}q_{params['steps']}s_{params['num_shots']}shots.pdf" if save_plot else None
+        plot_path = f"diff_vs_circuits_{params['num_qubits']}q_{params['steps']}s_{params['num_shots']}shots.pdf" if (
+            save_plot) else None
         plot_graph4(results, params, show=show_plot, save_path=plot_path)
 
     if save_plot:
@@ -205,8 +208,9 @@ def run_graph4(params=None, compute=True, load_if_exists=True,
 if __name__ == "__main__":
     # Example usage: Compute and plot, or customize
     run_graph4(
-            compute=False,  # Set False to skip computation
-            enable_plot=True,
-            save_plot=True,  # Set True to save
-            show_plot=False
-            )
+          compute=True,  # Set False to skip computation
+          enable_plot=True,
+          save_plot=True,  # Set True to save
+          show_plot=True,
+          load_if_exists=False
+          )

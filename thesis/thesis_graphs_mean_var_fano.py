@@ -38,7 +38,8 @@ def compute_steps_data(steps, noise_param, params, is_last_noise):
     num_shots = params['num_shots']
 
     for _ in range(num_circuits):
-        noisy_base = base_angles + noise_param * np.random.randn(steps, 1)
+        noise = noise_param * np.random.randn(steps, 1)
+        noisy_base = base_angles + noise
         betas, alphas = -np.sin(noisy_base).flatten(), -np.cos(noisy_base).flatten()
         sol = [tfim_momentum_trotter_single_k(k, steps, betas, alphas, 0) for k in ks]
         momentum_dms.append(sol)
@@ -52,6 +53,7 @@ def compute_steps_data(steps, noise_param, params, is_last_noise):
             for i in range(1, num_qubits, 2):
                 circuit.rzz(betas[step], i, (i + 1) % num_qubits)
             circuit.rx(alphas[step], range(num_qubits))
+            circuit.rz(0.3, range(num_qubits))
         circuit.measure(range(num_qubits), range(num_qubits))
         qiskit_circs.append(circuit)
 
@@ -312,10 +314,10 @@ def run_simulation(graph_key='graph1_2', params=None, compute=True, load_if_exis
     """
     if params is None:
         params = {
-            'num_qubits'       : 10,
+            'num_qubits'       : 6,
             'steps_list'       : [i for i in range(4)] + [i for i in range(4, 51, 2)],
             'num_circuits'     : 1000,
-            'noise_params_list': [0.0, 0.2, 0.6],
+            'noise_params_list': [0.0, 0.4, 0.8],
             'num_shots'        : 1000,
             }
 
@@ -381,10 +383,10 @@ if __name__ == "__main__":
     # Example usage: Compute and plot all, or customize
     run_simulation(
           graph_key='graph1_2',
-          compute=False,  # Set False to skip computation
+          compute=True,  # Set False to skip computation
           enable_mean_plot=True,
           enable_variance_plot=True,
           enable_fano_plot=True,
-          save_plots=True,  # Set True to save (add get_dated_plot_path if needed)
+          save_plots=False,  # Set True to save (add get_dated_plot_path if needed)
           show_plots=True
           )
